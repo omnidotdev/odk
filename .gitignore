@@ -1,0 +1,57 @@
+# Dependencies
+node_modules/
+
+# Rust build artifacts
+target/
+*/target/
+Cargo.lock
+*/Cargo.lock
+
+# TypeScript build output
+dist/
+*/dist/
+
+# Bun lock files (keep root bun.lock for reproducibility)
+odk-ts/bun.lock
+
+# TypeSpec generated artifacts
+generated/
+generated-*/
+tsp-out/
+tspgen/out/
+
+# Test/scratch files
+schema-test*.json
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temp files
+*.tmp
+*.temp
+.odk-temp/
+
+# Docs
+docs/
+
+# Env files
+.env.*
+.env.local.template
+
+# Python
+__pycache__/
+*.pyc
+
+# Local config
+weaver.yaml
+
+# CI/CD and dependency management (belong in individual repos)
+.github/
+renovate.json

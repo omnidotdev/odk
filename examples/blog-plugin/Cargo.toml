@@ -1,0 +1,12 @@
+[package]
+name = "blog-plugin"
+version = "0.1.0"
+edition = "2024"
+description = "Example ODK plugin - Blog API schema"
+
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+odk-pdk = { path = "../../odk-pdk-rust" }
+extism-pdk = "1.0"

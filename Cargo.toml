@@ -1,0 +1,9 @@
+[workspace]
+resolver = "3"
+members = [
+    "odk-schema",
+    "odk-cli",
+    "odk-pdk-rust",
+    "examples/blog-plugin",
+    "examples/blog-plugin-rust",
+]

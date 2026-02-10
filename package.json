@@ -1,0 +1,33 @@
+{
+  "name": "@omnidotdev/odk",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "compile": "tsp compile .",
+    "compile:watch": "tsp compile . --watch",
+    "generate:graphql": "bun openapi-generator-cli generate -i generated/schema/openapi3/openapi.yaml -g graphql-schema -o ./graphql-schema",
+    "clean": "rm -rf ./generated"
+  },
+  "dependencies": {
+    "@omnidotdev/typespec-drizzle": "^0.0.0",
+    "@openapitools/openapi-generator-cli": "^2.25.0",
+    "@typespec/compiler": "^1.6.0",
+    "@typespec/http": "1.6.0",
+    "@typespec/http-client-js": "^0.11.0",
+    "@typespec/json-schema": "^1.6.0",
+    "@typespec/openapi": "1.6.0",
+    "@typespec/openapi3": "^1.6.0",
+    "@typespec/protobuf": "^0.76.0",
+    "drizzle-graphql": "^0.8.5",
+    "drizzle-kit": "^0.31.7",
+    "graphql": "^16.12.0",
+    "graphql-yoga": "^5.16.2",
+    "postgres": "^3.4.7"
+  },
+  "devDependencies": {
+    "drizzle-orm": "^0.44.7",
+    "@types/node": "^24.10.1",
+    "typescript": "^5.9.3"
+  }
+}
