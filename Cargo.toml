@@ -7,3 +7,5 @@ members = [
     "examples/blog-plugin",
     "examples/blog-plugin-rust",
 ]
+
+[dev-dependencies]

@@ -31,3 +31,6 @@ tempfile = "3.5"
 
 # Process execution
 which = "7"
+
+[dev-dependencies]
+cargo-husky = { version = "1", default-features = false, features = ["precommit-hook", "run-cargo-fmt", "run-cargo-clippy", "run-cargo-test"] }
