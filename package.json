@@ -7,7 +7,11 @@
     "compile": "tsp compile .",
     "compile:watch": "tsp compile . --watch",
     "generate:graphql": "bun openapi-generator-cli generate -i generated/schema/openapi3/openapi.yaml -g graphql-schema -o ./graphql-schema",
-    "clean": "rm -rf ./generated"
+    "clean": "rm -rf ./generated",
+    "prepare": "husky",
+    "knip": "knip-bun",
+    "check": "biome check",
+    "lint": "biome lint"
   },
   "dependencies": {
     "@omnidotdev/typespec-drizzle": "^0.0.0",
