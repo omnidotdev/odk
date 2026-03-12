@@ -3,7 +3,7 @@ name = "odk-cli"
 version = "0.1.0"
 edition = "2024"
 description = "ODK CLI - Unified schema compilation from TypeScript, WASM, or JSON to multiple targets"
-license = "MIT"
+license = "Apache-2.0"
 
 [[bin]]
 name = "odk"

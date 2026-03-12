@@ -3,7 +3,7 @@ name = "odk-pdk"
 version = "0.1.0"
 edition = "2024"
 description = "ODK Plugin Development Kit for Rust - build WASM schema plugins"
-license = "MIT"
+license = "Apache-2.0"
 
 [dependencies]
 # Extism PDK for WASM plugins
