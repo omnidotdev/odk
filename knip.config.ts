@@ -5,7 +5,16 @@ import type { KnipConfig } from "knip";
  * @see https://knip.dev/overview/configuration
  */
 const knipConfig: KnipConfig = {
-  project: ["src/**/*.ts", "src/**/*.tsx"],
+  ignore: ["examples/**", "odk-ts/examples/**"],
+  // odk-ts is a publishable library; exclude from unused-export analysis
+  exclude: ["unresolved"],
+  workspaces: {
+    ".": {},
+    "odk-ts": {
+      includeEntryExports: false,
+      ignoreDependencies: ["arktype", "zod", "@valibot/to-json-schema"],
+    },
+  },
 };
 
 export default knipConfig;

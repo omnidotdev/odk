@@ -31,31 +31,33 @@
  * ```
  */
 
+export { serializeSchema } from "./compile.js";
+export { extractJsonSchema, getSchemaLibrary } from "./jsonSchemaExtract.js";
 // Main API
 export { odk } from "./odk.js";
-export type { ODKSchema, SchemaOptions } from "./odk.js";
+export { standardSchemaToCompiled } from "./standardSchemaAdapter.js";
+export { compiledSchemaToTypeSpec, emitToTargets } from "./typespecBridge.js";
 
 // Core types
 export type {
-  CompiledSchema,
-  CompiledModel,
-  CompiledUnion,
   CompiledField,
+  CompiledModel,
+  CompiledOperation,
+  CompiledSchema,
   CompiledType,
+  CompiledUnion,
   CompiledUnionVariant,
+  Directive,
   FieldConstraints,
+  FieldSelection,
+  OperationKind,
   ScalarType,
+  SelectionSet,
 } from "./compile.js";
-export { serializeSchema } from "./compile.js";
-
-// TypeSpec bridge
-export type { EmitOptions } from "./typespecBridge.js";
-export { compiledSchemaToTypeSpec, emitToTargets } from "./typespecBridge.js";
-
-// Standard Schema adapter
-export type { AdapterOptions } from "./standardSchemaAdapter.js";
-export { standardSchemaToCompiled } from "./standardSchemaAdapter.js";
-
 // JSON Schema utilities
 export type { JSONSchema } from "./jsonSchemaExtract.js";
-export { extractJsonSchema, getSchemaLibrary } from "./jsonSchemaExtract.js";
+export type { ODKSchema, SchemaOptions } from "./odk.js";
+// Standard Schema adapter
+export type { AdapterOptions } from "./standardSchemaAdapter.js";
+// TypeSpec bridge
+export type { EmitOptions } from "./typespecBridge.js";

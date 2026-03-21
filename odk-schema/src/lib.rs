@@ -33,7 +33,7 @@ pub mod source_map;
 pub use extensions::{Extensions, KnownExtension};
 pub use source_map::{RawTypeSpecBlock, SourceMap, SourceSpan};
 
-/// A compiled schema containing models and unions.
+/// A compiled schema containing models, unions, and operations.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CompiledSchema {
     /// Name of the schema namespace
@@ -42,6 +42,9 @@ pub struct CompiledSchema {
     pub models: Vec<CompiledModel>,
     /// Union/enum definitions
     pub unions: Vec<CompiledUnion>,
+    /// Operation definitions (queries, mutations, endpoints, RPCs)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub operations: Vec<CompiledOperation>,
     /// Raw TypeSpec blocks to pass through verbatim
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub raw_blocks: Vec<RawTypeSpecBlock>,
@@ -51,6 +54,83 @@ pub struct CompiledSchema {
     /// Warnings generated during compilation
     #[serde(skip_serializing_if = "Option::is_none")]
     pub warnings: Option<Vec<String>>,
+}
+
+/// A compiled operation representing something a client can do.
+///
+/// Covers GraphQL queries/mutations/subscriptions, REST endpoints, and gRPC RPCs.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompiledOperation {
+    /// Operation name (e.g. "getUser", "createPost")
+    pub name: String,
+    /// What kind of operation this is
+    pub kind: OperationKind,
+    /// Input/argument type (None for no-arg operations)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub input: Option<CompiledType>,
+    /// Return type
+    pub output: CompiledType,
+    /// Field selection set (for GraphQL operations)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionSet>,
+    /// Optional description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    /// Decorators and extensions for this operation
+    #[serde(default, skip_serializing_if = "Extensions::is_empty")]
+    pub extensions: Extensions,
+}
+
+/// The kind of operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum OperationKind {
+    /// GraphQL query
+    Query,
+    /// GraphQL mutation
+    Mutation,
+    /// GraphQL subscription
+    Subscription,
+    /// gRPC RPC
+    Rpc,
+    /// REST endpoint
+    Endpoint,
+}
+
+/// A set of selected fields within an operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SelectionSet {
+    /// Selected fields
+    pub fields: Vec<FieldSelection>,
+}
+
+/// A single field selection within a selection set.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldSelection {
+    /// Field name
+    pub name: String,
+    /// Optional alias for this field
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub alias: Option<String>,
+    /// Arguments passed to this field
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<(String, CompiledType)>,
+    /// Nested selection set
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub selection: Option<SelectionSet>,
+    /// Directives applied to this field
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directives: Vec<Directive>,
+}
+
+/// A directive applied to a field selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Directive {
+    /// Directive name (without @)
+    pub name: String,
+    /// Directive arguments as key-value pairs
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub arguments: Vec<(String, serde_json::Value)>,
 }
 
 /// A compiled model (object type).
@@ -206,6 +286,7 @@ impl CompiledSchema {
             name: name.into(),
             models: Vec::new(),
             unions: Vec::new(),
+            operations: Vec::new(),
             raw_blocks: Vec::new(),
             imports: Vec::new(),
             warnings: None,
@@ -220,6 +301,11 @@ impl CompiledSchema {
     /// Add a union to the schema.
     pub fn add_union(&mut self, union: CompiledUnion) {
         self.unions.push(union);
+    }
+
+    /// Add an operation to the schema.
+    pub fn add_operation(&mut self, operation: CompiledOperation) {
+        self.operations.push(operation);
     }
 
     /// Add a raw TypeSpec block.

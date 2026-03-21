@@ -12,7 +12,7 @@ from dataclasses import field as dataclass_field
 from typing import Any
 
 from .model import Model
-from .types import RawBlock
+from .types import CompiledOperation, RawBlock
 from .union import Union
 
 
@@ -38,6 +38,7 @@ class Schema:
     name: str
     models: list[Model] = dataclass_field(default_factory=list)
     unions: list[Union] = dataclass_field(default_factory=list)
+    operations: list[CompiledOperation] = dataclass_field(default_factory=list)
     imports: list[str] = dataclass_field(default_factory=list)
     raw_blocks: list[RawBlock] = dataclass_field(default_factory=list)
     warnings: list[str] | None = None
@@ -58,6 +59,14 @@ class Schema:
         """Add multiple unions to the schema."""
         self.unions.extend(unions)
 
+    def add_operation(self, operation: CompiledOperation) -> None:
+        """Add an operation to the schema."""
+        self.operations.append(operation)
+
+    def add_operations(self, operations: list[CompiledOperation]) -> None:
+        """Add multiple operations to the schema."""
+        self.operations.extend(operations)
+
     def add_import(self, import_path: str) -> None:
         """Add a TypeSpec import."""
         if import_path not in self.imports:
@@ -74,6 +83,9 @@ class Schema:
             "models": [m.to_dict() for m in self.models],
             "unions": [u.to_dict() for u in self.unions],
         }
+
+        if self.operations:
+            result["operations"] = [o.to_dict() for o in self.operations]
 
         if self.raw_blocks:
             result["raw_blocks"] = [r.to_dict() for r in self.raw_blocks]

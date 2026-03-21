@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+// biome-ignore-all lint/suspicious/noConsole: CLI tool — console output is expected
+
 /**
  * ODK CLI (TypeScript)
  *
@@ -7,8 +9,8 @@
  *   odk init                 Initialize a new ODK project
  */
 
-import { resolve } from "node:path";
 import { writeFile } from "node:fs/promises";
+import { resolve } from "node:path";
 
 async function main() {
   const args = process.argv.slice(2);
@@ -61,16 +63,17 @@ async function compileCommand(args: string[]) {
     process.exit(1);
   }
 
-  const schemaPath = resolve(args[0]);
+  const schemaPath = resolve(args[0]!);
   let outDir = "./generated";
   let targets: string[] = [];
 
   // Parse options
   for (let i = 1; i < args.length; i++) {
     if (args[i] === "--out" || args[i] === "-o") {
-      outDir = args[++i];
+      outDir = args[++i] ?? outDir;
     } else if (args[i] === "--target" || args[i] === "-t") {
-      targets.push(args[++i]);
+      const target = args[++i];
+      if (target) targets.push(target);
     }
   }
 

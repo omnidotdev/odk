@@ -37,8 +37,9 @@ pub use odk_schema;
 /// Prelude module - import everything you need with `use odk_pdk::prelude::*`
 pub mod prelude {
     pub use crate::odk_schema::{
-        CompiledField, CompiledModel, CompiledSchema, CompiledType, CompiledUnion,
-        CompiledUnionVariant, FieldConstraints, LiteralValue, ScalarType,
+        CompiledField, CompiledModel, CompiledOperation, CompiledSchema, CompiledType,
+        CompiledUnion, CompiledUnionVariant, Directive, FieldConstraints, FieldSelection,
+        LiteralValue, OperationKind, ScalarType, SelectionSet,
     };
     // Alias for convenience
     pub use crate::odk_schema::CompiledUnionVariant as UnionVariant;

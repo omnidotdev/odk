@@ -244,3 +244,95 @@ class RawBlock:
         if self.source:
             result["source"] = self.source.to_dict()
         return result
+
+
+class OperationKind(Enum):
+    """The kind of operation."""
+
+    QUERY = "query"
+    MUTATION = "mutation"
+    SUBSCRIPTION = "subscription"
+    RPC = "rpc"
+    ENDPOINT = "endpoint"
+
+
+@dataclass
+class Directive:
+    """A directive applied to a field selection."""
+
+    name: str
+    arguments: list[tuple[str, Any]] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict."""
+        result: dict[str, Any] = {"name": self.name}
+        if self.arguments:
+            result["arguments"] = self.arguments
+        return result
+
+
+@dataclass
+class FieldSelection:
+    """A single field selection within a selection set."""
+
+    name: str
+    alias: str | None = None
+    arguments: list[tuple[str, CompiledType]] = field(default_factory=list)
+    selection: SelectionSet | None = None
+    directives: list[Directive] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict."""
+        result: dict[str, Any] = {"name": self.name}
+        if self.alias:
+            result["alias"] = self.alias
+        if self.arguments:
+            result["arguments"] = [
+                (name, t.to_dict()) for name, t in self.arguments
+            ]
+        if self.selection:
+            result["selection"] = self.selection.to_dict()
+        if self.directives:
+            result["directives"] = [d.to_dict() for d in self.directives]
+        return result
+
+
+@dataclass
+class SelectionSet:
+    """A set of selected fields within an operation."""
+
+    fields: list[FieldSelection] = field(default_factory=list)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict."""
+        return {"fields": [f.to_dict() for f in self.fields]}
+
+
+@dataclass
+class CompiledOperation:
+    """A compiled operation representing something a client can do."""
+
+    name: str
+    kind: OperationKind
+    output: CompiledType
+    input: CompiledType | None = None
+    selection: SelectionSet | None = None
+    description: str | None = None
+    extensions: Extensions = field(default_factory=Extensions)
+
+    def to_dict(self) -> dict[str, Any]:
+        """Convert to dict matching Rust JSON serialization."""
+        result: dict[str, Any] = {
+            "name": self.name,
+            "kind": self.kind.value,
+            "output": self.output.to_dict(),
+        }
+        if self.input is not None:
+            result["input"] = self.input.to_dict()
+        if self.selection is not None:
+            result["selection"] = self.selection.to_dict()
+        if self.description is not None:
+            result["description"] = self.description
+        if not self.extensions.is_empty():
+            result["extensions"] = self.extensions.to_dict()
+        return result

@@ -28,7 +28,7 @@ export interface RawTypeSpecBlock {
 // ============================================================
 
 /** Known extension types that ODK understands. */
-export type KnownExtension =
+type KnownExtension =
   | { kind: "zodTransform"; code: string }
   | { kind: "zodRefinement"; code: string; message?: string }
   | { kind: "decorator"; value: string }
@@ -112,46 +112,56 @@ export interface CompiledUnionVariant {
   type?: CompiledType;
 }
 
+/** The kind of operation. */
+export type OperationKind =
+  | "query"
+  | "mutation"
+  | "subscription"
+  | "rpc"
+  | "endpoint";
+
+/** A compiled operation representing something a client can do. */
+export interface CompiledOperation {
+  name: string;
+  kind: OperationKind;
+  input?: CompiledType;
+  output: CompiledType;
+  selection?: SelectionSet;
+  description?: string;
+  extensions?: Extensions;
+}
+
+/** A set of selected fields within an operation. */
+export interface SelectionSet {
+  fields: FieldSelection[];
+}
+
+/** A single field selection within a selection set. */
+export interface FieldSelection {
+  name: string;
+  alias?: string;
+  arguments?: [string, CompiledType][];
+  selection?: SelectionSet;
+  directives?: Directive[];
+}
+
+/** A directive applied to a field selection. */
+export interface Directive {
+  name: string;
+  arguments?: [string, unknown][];
+}
+
 export interface CompiledSchema {
   name: string;
   models: CompiledModel[];
   unions: CompiledUnion[];
+  /** Operation definitions (queries, mutations, endpoints, RPCs) */
+  operations?: CompiledOperation[];
   /** Raw TypeSpec blocks to pass through verbatim */
   rawBlocks?: RawTypeSpecBlock[];
   /** TypeSpec imports required by this schema */
   imports?: string[];
   warnings?: string[];
-}
-
-// ============================================================
-// Helper Functions
-// ============================================================
-
-/** Create an empty extensions object. */
-export function createExtensions(): Extensions {
-  return { known: [] };
-}
-
-/** Add a decorator to extensions. */
-export function addDecorator(
-  extensions: Extensions,
-  decorator: string,
-): Extensions {
-  const known = extensions.known ?? [];
-  return {
-    ...extensions,
-    known: [...known, { kind: "decorator", value: decorator }],
-  };
-}
-
-/** Get all decorators from extensions. */
-export function getDecorators(extensions: Extensions): string[] {
-  return (extensions.known ?? [])
-    .filter(
-      (ext): ext is { kind: "decorator"; value: string } =>
-        ext.kind === "decorator",
-    )
-    .map((ext) => ext.value);
 }
 
 /**

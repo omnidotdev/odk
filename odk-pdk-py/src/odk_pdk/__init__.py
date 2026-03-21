@@ -26,11 +26,16 @@ from .field import Field
 from .model import Model
 from .schema import Schema
 from .types import (
+    CompiledOperation,
     CompiledType,
+    Directive,
     Extensions,
     FieldConstraints,
+    FieldSelection,
+    OperationKind,
     RawBlock,
     ScalarType,
+    SelectionSet,
     SourceSpan,
 )
 from .union import Union, UnionVariant
@@ -49,6 +54,12 @@ __all__ = [
     "Extensions",
     "SourceSpan",
     "RawBlock",
+    # Operations
+    "CompiledOperation",
+    "OperationKind",
+    "SelectionSet",
+    "FieldSelection",
+    "Directive",
 ]
 
 __version__ = "0.1.0"
