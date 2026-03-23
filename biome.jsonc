@@ -15,7 +15,10 @@
             "groups": [
               { "type": false, "source": [":BUN:", ":NODE:"] },
               ":BLANK_LINE:",
-              { "type": false, "source": [":PACKAGE:", ":PACKAGE_WITH_PROTOCOL:"] },
+              {
+                "type": false,
+                "source": [":PACKAGE:", ":PACKAGE_WITH_PROTOCOL:"]
+              },
               ":BLANK_LINE:",
               { "type": false, "source": ["**"] },
               ":BLANK_LINE:",
@@ -35,14 +38,23 @@
     "rules": {
       "correctness": {
         "noUnusedImports": { "fix": "safe", "level": "error" },
-        "noUnusedVariables": { "level": "error", "options": { "ignoreRestSiblings": true } }
+        "noUnusedVariables": {
+          "level": "error",
+          "options": { "ignoreRestSiblings": true }
+        }
       },
       "style": {
         "noNonNullAssertion": "off",
-        "useImportType": { "level": "error", "options": { "style": "separatedType" } }
+        "useImportType": {
+          "level": "error",
+          "options": { "style": "separatedType" }
+        }
       },
       "suspicious": {
-        "noConsole": { "level": "error", "options": { "allow": ["error", "warn", "info"] } }
+        "noConsole": {
+          "level": "error",
+          "options": { "allow": ["error", "warn", "info"] }
+        }
       }
     }
   }
