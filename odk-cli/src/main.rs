@@ -175,12 +175,12 @@ fn main() -> Result<()> {
 
         Commands::Generate {
             input,
-            config: _,
+            config,
             out,
             targets,
             operations,
             introspect,
-        } => cmd_generate(input, out, targets, operations, introspect),
+        } => cmd_generate(input, config, out, targets, operations, introspect),
 
         Commands::Typespec {
             input,
@@ -632,6 +632,7 @@ fn cmd_check(input: Utf8PathBuf, operations: Option<String>) -> Result<()> {
 /// Generate command: produce client artifacts from schema + operations.
 fn cmd_generate(
     input: Option<Utf8PathBuf>,
+    config_path: Option<Utf8PathBuf>,
     out: Utf8PathBuf,
     targets_str: String,
     operations: Option<String>,
@@ -639,8 +640,41 @@ fn cmd_generate(
 ) -> Result<()> {
     use odk_cli::generate::{self, Target};
 
+    // Load config file if present
+    let cfg = if let Some(ref path) = config_path {
+        Some(config::load_config(path)?)
+    } else if let Some(found) = config::find_config_file() {
+        eprintln!("Using config file: {}", found);
+        Some(config::load_config(&found)?)
+    } else {
+        None
+    };
+    let gen_cfg = cfg.as_ref().and_then(|c| c.generate.as_ref());
+
+    // Merge: CLI flags take precedence over config
+    let schema_input = input.or_else(|| cfg.as_ref().and_then(|c| c.schema.clone()));
+    let final_targets_str = if targets_str == "sdk,react-query,msw" {
+        // Only use config targets if CLI is still at default
+        gen_cfg
+            .filter(|g| !g.targets.is_empty())
+            .map(|g| g.targets.join(","))
+            .unwrap_or(targets_str)
+    } else {
+        targets_str
+    };
+    let final_operations = operations.or_else(|| {
+        gen_cfg.and_then(|g| g.operations.clone())
+    });
+    let final_out = if out == Utf8PathBuf::from("./generated") {
+        gen_cfg
+            .and_then(|g| g.output.clone())
+            .unwrap_or(out)
+    } else {
+        out
+    };
+
     // Parse targets
-    let targets = Target::parse_list(&targets_str)
+    let targets = Target::parse_list(&final_targets_str)
         .map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
@@ -652,7 +686,7 @@ fn cmd_generate(
         eprintln!("Introspecting {}...", url);
         loaders::introspect_schema(url)
             .map_err(|e| anyhow::anyhow!("Introspection failed: {}", e))?
-    } else if let Some(ref input_path) = input {
+    } else if let Some(ref input_path) = schema_input {
         eprintln!("Loading schema from {}...", input_path);
         load_schema(input_path)?
     } else {
@@ -660,7 +694,7 @@ fn cmd_generate(
     };
 
     // Load operations
-    if let Some(pattern) = &operations {
+    if let Some(pattern) = &final_operations {
         eprintln!("Loading operations from {}...", pattern);
         let (ops, frags) = loaders::load_graphql_operations(pattern)
             .map_err(|e| anyhow::anyhow!("Failed to load operations: {}", e))?;
@@ -692,11 +726,11 @@ fn cmd_generate(
     let output = generate::generate(&schema, &targets);
 
     // Write output files
-    fs::create_dir_all(&out)
-        .with_context(|| format!("Failed to create output directory: {}", out))?;
+    fs::create_dir_all(&final_out)
+        .with_context(|| format!("Failed to create output directory: {}", final_out))?;
 
     for (filename, content) in &output {
-        let path = out.join(filename);
+        let path = final_out.join(filename);
         fs::write(&path, content)
             .with_context(|| format!("Failed to write {}", path))?;
         eprintln!("  Wrote {}", path);
