@@ -53,6 +53,12 @@ pub fn compiled_to_typespec(schema: &CompiledSchema, namespace: &str) -> String 
         lines.push(String::new());
     }
 
+    // Emit operations
+    for op in &schema.operations {
+        lines.push(emit_operation(op));
+        lines.push(String::new());
+    }
+
     // Emit raw TypeSpec blocks
     for raw_block in &schema.raw_blocks {
         if let Some(desc) = &raw_block.description {
@@ -208,6 +214,60 @@ fn constraints_to_decorators(c: &FieldConstraints) -> Vec<String> {
     }
 
     decorators
+}
+
+fn emit_operation(op: &odk_schema::CompiledOperation) -> String {
+    let mut lines = Vec::new();
+
+    if let Some(desc) = &op.description {
+        lines.push(format!("/** {} */", desc));
+    }
+
+    // Emit directives
+    for directive in &op.directives {
+        let args_str = if directive.arguments.is_empty() {
+            String::new()
+        } else {
+            let args: Vec<String> = directive
+                .arguments
+                .iter()
+                .map(|(k, v)| format!("{}: {}", k, v))
+                .collect();
+            format!("({})", args.join(", "))
+        };
+        lines.push(format!("@{}{}", directive.name, args_str));
+    }
+
+    // Build parameter list from variables
+    let params = if op.variables.is_empty() {
+        String::new()
+    } else {
+        let param_strs: Vec<String> = op
+            .variables
+            .iter()
+            .map(|v| {
+                let opt = if v.required { "" } else { "?" };
+                format!(
+                    "{}{}: {}",
+                    sanitize_identifier(&v.name),
+                    opt,
+                    type_to_string(&v.variable_type)
+                )
+            })
+            .collect();
+        param_strs.join(", ")
+    };
+
+    let return_type = type_to_string(&op.output);
+
+    lines.push(format!(
+        "op {}({}): {};",
+        sanitize_identifier(&op.name),
+        params,
+        return_type
+    ));
+
+    lines.join("\n")
 }
 
 fn type_to_string(t: &CompiledType) -> String {

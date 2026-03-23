@@ -45,6 +45,9 @@ pub struct CompiledSchema {
     /// Operation definitions (queries, mutations, endpoints, RPCs)
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub operations: Vec<CompiledOperation>,
+    /// Fragment definitions used by operations
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fragments: Vec<FragmentDefinition>,
     /// Raw TypeSpec blocks to pass through verbatim
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub raw_blocks: Vec<RawTypeSpecBlock>,
@@ -70,6 +73,9 @@ pub struct CompiledOperation {
     pub input: Option<CompiledType>,
     /// Return type
     pub output: CompiledType,
+    /// Variable declarations for this operation
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub variables: Vec<Variable>,
     /// Field selection set (for GraphQL operations)
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<SelectionSet>,
@@ -79,6 +85,9 @@ pub struct CompiledOperation {
     /// Decorators and extensions for this operation
     #[serde(default, skip_serializing_if = "Extensions::is_empty")]
     pub extensions: Extensions,
+    /// Directives applied to this operation
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directives: Vec<Directive>,
 }
 
 /// The kind of operation.
@@ -102,6 +111,12 @@ pub enum OperationKind {
 pub struct SelectionSet {
     /// Selected fields
     pub fields: Vec<FieldSelection>,
+    /// Fragment spreads (e.g. `...UserFields`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub fragment_spreads: Vec<FragmentSpread>,
+    /// Inline fragments (e.g. `... on Admin { role }`)
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub inline_fragments: Vec<InlineFragment>,
 }
 
 /// A single field selection within a selection set.
@@ -131,6 +146,62 @@ pub struct Directive {
     /// Directive arguments as key-value pairs
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub arguments: Vec<(String, serde_json::Value)>,
+}
+
+/// A fragment spread within a selection set (e.g. `...UserFields`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FragmentSpread {
+    /// Fragment name
+    pub name: String,
+    /// Directives applied to this spread
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directives: Vec<Directive>,
+}
+
+/// An inline fragment within a selection set (e.g. `... on Admin { role }`).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InlineFragment {
+    /// Type condition (None for unconditional inline fragments)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub type_condition: Option<String>,
+    /// Selection set within this fragment
+    pub selection: SelectionSet,
+    /// Directives applied to this fragment
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directives: Vec<Directive>,
+}
+
+/// A named fragment definition.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FragmentDefinition {
+    /// Fragment name
+    pub name: String,
+    /// Type condition (the type this fragment applies to)
+    pub type_condition: String,
+    /// Selection set
+    pub selection: SelectionSet,
+    /// Directives applied to this fragment
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub directives: Vec<Directive>,
+}
+
+/// A variable declaration in an operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Variable {
+    /// Variable name (without $)
+    pub name: String,
+    /// Variable type
+    #[serde(rename = "type")]
+    pub variable_type: CompiledType,
+    /// Whether the variable is required (non-nullable in GraphQL)
+    #[serde(default)]
+    pub required: bool,
+    /// Default value (JSON representation)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub default_value: Option<serde_json::Value>,
+    /// Optional description
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 /// A compiled model (object type).
@@ -287,6 +358,7 @@ impl CompiledSchema {
             models: Vec::new(),
             unions: Vec::new(),
             operations: Vec::new(),
+            fragments: Vec::new(),
             raw_blocks: Vec::new(),
             imports: Vec::new(),
             warnings: None,
@@ -306,6 +378,11 @@ impl CompiledSchema {
     /// Add an operation to the schema.
     pub fn add_operation(&mut self, operation: CompiledOperation) {
         self.operations.push(operation);
+    }
+
+    /// Add a fragment definition to the schema.
+    pub fn add_fragment(&mut self, fragment: FragmentDefinition) {
+        self.fragments.push(fragment);
     }
 
     /// Add a raw TypeSpec block.
@@ -541,5 +618,147 @@ mod tests {
         let parsed = CompiledSchema::from_json(&json).unwrap();
         assert_eq!(parsed.name, "TestAPI");
         assert_eq!(parsed.models.len(), 1);
+    }
+
+    #[test]
+    fn test_operation_serialization_roundtrip() {
+        let mut schema = CompiledSchema::new("TestAPI");
+
+        let op = CompiledOperation {
+            name: "GetUser".to_string(),
+            kind: OperationKind::Query,
+            input: None,
+            output: CompiledType::reference("User"),
+            variables: vec![Variable {
+                name: "id".to_string(),
+                variable_type: CompiledType::string(),
+                required: true,
+                default_value: None,
+                description: None,
+            }],
+            selection: Some(SelectionSet {
+                fields: vec![
+                    FieldSelection {
+                        name: "id".to_string(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                    FieldSelection {
+                        name: "name".to_string(),
+                        alias: Some("userName".to_string()),
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                    FieldSelection {
+                        name: "posts".to_string(),
+                        alias: None,
+                        arguments: vec![(
+                            "first".to_string(),
+                            CompiledType::Scalar {
+                                name: ScalarType::Int32,
+                            },
+                        )],
+                        selection: Some(SelectionSet {
+                            fields: vec![FieldSelection {
+                                name: "title".to_string(),
+                                alias: None,
+                                arguments: vec![],
+                                selection: None,
+                                directives: vec![],
+                            }],
+                            fragment_spreads: vec![],
+                            inline_fragments: vec![],
+                        }),
+                        directives: vec![],
+                    },
+                ],
+                fragment_spreads: vec![FragmentSpread {
+                    name: "UserFields".to_string(),
+                    directives: vec![],
+                }],
+                inline_fragments: vec![InlineFragment {
+                    type_condition: Some("Admin".to_string()),
+                    selection: SelectionSet {
+                        fields: vec![FieldSelection {
+                            name: "role".to_string(),
+                            alias: None,
+                            arguments: vec![],
+                            selection: None,
+                            directives: vec![],
+                        }],
+                        fragment_spreads: vec![],
+                        inline_fragments: vec![],
+                    },
+                    directives: vec![],
+                }],
+            }),
+            description: Some("Fetch a user by ID".to_string()),
+            extensions: Extensions::default(),
+            directives: vec![Directive {
+                name: "cached".to_string(),
+                arguments: vec![("ttl".to_string(), serde_json::json!(60))],
+            }],
+        };
+
+        schema.add_operation(op);
+
+        let json = schema.to_json().unwrap();
+        let parsed = CompiledSchema::from_json(&json).unwrap();
+
+        assert_eq!(parsed.operations.len(), 1);
+        let parsed_op = &parsed.operations[0];
+        assert_eq!(parsed_op.name, "GetUser");
+        assert_eq!(parsed_op.variables.len(), 1);
+        assert_eq!(parsed_op.variables[0].name, "id");
+        assert!(parsed_op.variables[0].required);
+        assert_eq!(parsed_op.directives.len(), 1);
+        assert_eq!(parsed_op.directives[0].name, "cached");
+
+        let sel = parsed_op.selection.as_ref().unwrap();
+        assert_eq!(sel.fields.len(), 3);
+        assert_eq!(sel.fragment_spreads.len(), 1);
+        assert_eq!(sel.inline_fragments.len(), 1);
+        assert_eq!(sel.fields[1].alias, Some("userName".to_string()));
+    }
+
+    #[test]
+    fn test_fragment_definition_roundtrip() {
+        let mut schema = CompiledSchema::new("TestAPI");
+
+        schema.add_fragment(FragmentDefinition {
+            name: "UserFields".to_string(),
+            type_condition: "User".to_string(),
+            selection: SelectionSet {
+                fields: vec![
+                    FieldSelection {
+                        name: "id".to_string(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                    FieldSelection {
+                        name: "email".to_string(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                ],
+                fragment_spreads: vec![],
+                inline_fragments: vec![],
+            },
+            directives: vec![],
+        });
+
+        let json = schema.to_json().unwrap();
+        let parsed = CompiledSchema::from_json(&json).unwrap();
+        assert_eq!(parsed.fragments.len(), 1);
+        assert_eq!(parsed.fragments[0].name, "UserFields");
+        assert_eq!(parsed.fragments[0].type_condition, "User");
+        assert_eq!(parsed.fragments[0].selection.fields.len(), 2);
     }
 }

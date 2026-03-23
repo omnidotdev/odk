@@ -91,6 +91,7 @@ impl TsCompiledSchema {
                 .map(|u| u.to_compiled_union())
                 .collect(),
             operations: Vec::new(),
+            fragments: Vec::new(),
             raw_blocks: Vec::new(),
             imports: Vec::new(),
             warnings: None,

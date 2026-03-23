@@ -16,12 +16,13 @@ mod builder;
 mod config;
 mod error_mapper;
 mod extism_host;
-mod loaders;
 mod source_map;
 mod templates;
 mod ts_executor;
 mod ts_schema_adapter;
 mod typespec_bridge;
+
+use odk_cli::loaders;
 
 #[derive(Parser, Debug)]
 #[command(name = "odk", version, about = "ODK - Omni Development Kit CLI")]
@@ -58,6 +59,14 @@ enum Commands {
         /// Keep temporary TypeSpec files (for debugging)
         #[arg(long)]
         keep_temp: bool,
+
+        /// GraphQL operation documents glob pattern (e.g. "src/**/*.graphql")
+        #[arg(long)]
+        operations: Option<String>,
+
+        /// Introspect a GraphQL endpoint to get the schema
+        #[arg(long)]
+        introspect: Option<String>,
     },
 
     /// Initialize a new ODK project
@@ -88,8 +97,12 @@ enum Commands {
 
     /// Check/validate a schema without emitting
     Check {
-        /// Input source: .ts, .yaml, .json, or .wasm file
+        /// Input source: .ts, .yaml, .json, .wasm, or .graphql file
         input: Utf8PathBuf,
+
+        /// GraphQL operation documents glob pattern
+        #[arg(long)]
+        operations: Option<String>,
     },
 
     /// Generate TypeSpec source from a schema (without emitting)
@@ -118,7 +131,9 @@ fn main() -> Result<()> {
             emit,
             namespace,
             keep_temp,
-        } => cmd_compile(input, config, out, emit, namespace, keep_temp),
+            operations,
+            introspect,
+        } => cmd_compile(input, config, out, emit, namespace, keep_temp, operations, introspect),
 
         Commands::Init { lang, name } => cmd_init(lang, name),
 
@@ -128,7 +143,7 @@ fn main() -> Result<()> {
             release,
         } => builder::cmd_build(input, out, release),
 
-        Commands::Check { input } => cmd_check(input),
+        Commands::Check { input, operations } => cmd_check(input, operations),
 
         Commands::Typespec {
             input,
@@ -173,8 +188,14 @@ fn load_schema(input: &Utf8PathBuf) -> Result<CompiledSchema> {
             loaders::load_yaml_schema(path)
                 .map_err(|e| anyhow::anyhow!("Failed to load YAML schema: {}", e))
         }
+        "graphql" | "gql" => {
+            // GraphQL SDL schema file
+            let path = std::path::Path::new(input.as_str());
+            loaders::load_graphql_schema(path)
+                .map_err(|e| anyhow::anyhow!("Failed to load GraphQL schema: {}", e))
+        }
         _ => bail!(
-            "Unsupported input format: .{}. Use .ts, .wasm, .json, or .yaml",
+            "Unsupported input format: .{}. Use .ts, .wasm, .json, .yaml, or .graphql",
             ext
         ),
     }
@@ -188,6 +209,8 @@ fn cmd_compile(
     emit: Option<Vec<String>>,
     namespace: Option<String>,
     keep_temp: bool,
+    operations: Option<String>,
+    introspect_url: Option<String>,
 ) -> Result<()> {
     // Load config file if present
     let cfg = if let Some(ref path) = config_path {
@@ -220,14 +243,40 @@ fn cmd_compile(
         )
     })?;
 
-    // Load schema
-    eprintln!("Loading schema from {}...", schema_path);
-    let schema = load_schema(&schema_path)?;
+    // If --introspect is set, fetch schema from endpoint
+    let mut schema = if let Some(url) = &introspect_url {
+        eprintln!("Introspecting {}...", url);
+        loaders::introspect_schema(url)
+            .map_err(|e| anyhow::anyhow!("Introspection failed: {}", e))?
+    } else {
+        eprintln!("Loading schema from {}...", schema_path);
+        load_schema(&schema_path)?
+    };
+
+    // If --operations is set, load operation documents
+    if let Some(pattern) = &operations {
+        eprintln!("Loading operations from {}...", pattern);
+        let (ops, frags) = loaders::load_graphql_operations(pattern)
+            .map_err(|e| anyhow::anyhow!("Failed to load operations: {}", e))?;
+        for op in ops {
+            schema.add_operation(op);
+        }
+        for frag in frags {
+            schema.add_fragment(frag);
+        }
+        eprintln!(
+            "  Loaded {} operations, {} fragments",
+            schema.operations.len(),
+            schema.fragments.len()
+        );
+    }
+
     eprintln!(
-        "  Loaded: {} ({} models, {} unions)",
+        "  Loaded: {} ({} models, {} unions, {} operations)",
         schema.name,
         schema.models.len(),
-        schema.unions.len()
+        schema.unions.len(),
+        schema.operations.len()
     );
 
     compile_with_typespec(&schema, &emitters, &output_dir, ns, keep_temp)
@@ -496,10 +545,21 @@ fn prompt_for_language() -> Result<templates::ProjectLang> {
 }
 
 /// Check command: validate a schema without emitting.
-fn cmd_check(input: Utf8PathBuf) -> Result<()> {
+fn cmd_check(input: Utf8PathBuf, operations: Option<String>) -> Result<()> {
     eprintln!("Checking {}...", input);
 
-    let schema = load_schema(&input)?;
+    let mut schema = load_schema(&input)?;
+
+    if let Some(pattern) = &operations {
+        let (ops, frags) = loaders::load_graphql_operations(pattern)
+            .map_err(|e| anyhow::anyhow!("Failed to load operations: {}", e))?;
+        for op in ops {
+            schema.add_operation(op);
+        }
+        for frag in frags {
+            schema.add_fragment(frag);
+        }
+    }
 
     println!("Schema: {}", schema.name);
     println!("Models: {}", schema.models.len());
@@ -509,6 +569,14 @@ fn cmd_check(input: Utf8PathBuf) -> Result<()> {
     println!("Unions: {}", schema.unions.len());
     for union in &schema.unions {
         println!("  - {} ({} variants)", union.name, union.variants.len());
+    }
+    println!("Operations: {}", schema.operations.len());
+    for op in &schema.operations {
+        println!("  - {} ({:?})", op.name, op.kind);
+    }
+    println!("Fragments: {}", schema.fragments.len());
+    for frag in &schema.fragments {
+        println!("  - {} on {}", frag.name, frag.type_condition);
     }
 
     if let Some(warnings) = &schema.warnings {
