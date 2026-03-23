@@ -105,6 +105,34 @@ enum Commands {
         operations: Option<String>,
     },
 
+    /// Generate client artifacts (hooks, mocks, SDK) from a schema
+    Generate {
+        /// Input source: .ts, .yaml, .json, .wasm, or .graphql file
+        input: Option<Utf8PathBuf>,
+
+        /// Config file path (default: auto-detect odk.config.*)
+        #[arg(short, long)]
+        config: Option<Utf8PathBuf>,
+
+        /// Output directory for generated files
+        #[arg(short, long, default_value = "./generated")]
+        out: Utf8PathBuf,
+
+        /// Generation targets (comma-separated)
+        /// Available: sdk, react-query, msw
+        /// Default: sdk,react-query,msw
+        #[arg(short, long, default_value = "sdk,react-query,msw")]
+        targets: String,
+
+        /// GraphQL operation documents glob pattern (e.g. "src/**/*.graphql")
+        #[arg(long)]
+        operations: Option<String>,
+
+        /// Introspect a GraphQL endpoint to get the schema
+        #[arg(long)]
+        introspect: Option<String>,
+    },
+
     /// Generate TypeSpec source from a schema (without emitting)
     Typespec {
         /// Input source: .ts, .yaml, .json, or .wasm file
@@ -144,6 +172,15 @@ fn main() -> Result<()> {
         } => builder::cmd_build(input, out, release),
 
         Commands::Check { input, operations } => cmd_check(input, operations),
+
+        Commands::Generate {
+            input,
+            config: _,
+            out,
+            targets,
+            operations,
+            introspect,
+        } => cmd_generate(input, out, targets, operations, introspect),
 
         Commands::Typespec {
             input,
@@ -589,6 +626,83 @@ fn cmd_check(input: Utf8PathBuf, operations: Option<String>) -> Result<()> {
     }
 
     println!("\nSchema is valid!");
+    Ok(())
+}
+
+/// Generate command: produce client artifacts from schema + operations.
+fn cmd_generate(
+    input: Option<Utf8PathBuf>,
+    out: Utf8PathBuf,
+    targets_str: String,
+    operations: Option<String>,
+    introspect_url: Option<String>,
+) -> Result<()> {
+    use odk_cli::generate::{self, Target};
+
+    // Parse targets
+    let targets = Target::parse_list(&targets_str)
+        .map_err(|e| anyhow::anyhow!(e))?;
+
+    if targets.is_empty() {
+        bail!("No targets specified. Available: sdk, react-query, msw");
+    }
+
+    // Load schema
+    let mut schema = if let Some(url) = &introspect_url {
+        eprintln!("Introspecting {}...", url);
+        loaders::introspect_schema(url)
+            .map_err(|e| anyhow::anyhow!("Introspection failed: {}", e))?
+    } else if let Some(ref input_path) = input {
+        eprintln!("Loading schema from {}...", input_path);
+        load_schema(input_path)?
+    } else {
+        bail!("No schema source. Provide an input file or --introspect URL.");
+    };
+
+    // Load operations
+    if let Some(pattern) = &operations {
+        eprintln!("Loading operations from {}...", pattern);
+        let (ops, frags) = loaders::load_graphql_operations(pattern)
+            .map_err(|e| anyhow::anyhow!("Failed to load operations: {}", e))?;
+        for op in ops {
+            schema.add_operation(op);
+        }
+        for frag in frags {
+            schema.add_fragment(frag);
+        }
+    }
+
+    if schema.operations.is_empty() {
+        bail!(
+            "No operations found. Provide operation documents via --operations \
+             or include them in the schema file."
+        );
+    }
+
+    eprintln!(
+        "  {} operations, {} fragments",
+        schema.operations.len(),
+        schema.fragments.len()
+    );
+
+    // Generate
+    let target_names: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
+    eprintln!("Generating targets: {}", target_names.join(", "));
+
+    let output = generate::generate(&schema, &targets);
+
+    // Write output files
+    fs::create_dir_all(&out)
+        .with_context(|| format!("Failed to create output directory: {}", out))?;
+
+    for (filename, content) in &output {
+        let path = out.join(filename);
+        fs::write(&path, content)
+            .with_context(|| format!("Failed to write {}", path))?;
+        eprintln!("  Wrote {}", path);
+    }
+
+    eprintln!("Done! {} files generated.", output.len());
     Ok(())
 }
 

@@ -34,6 +34,26 @@ pub struct OdkConfig {
     /// Namespace for generated TypeSpec
     #[serde(skip_serializing_if = "Option::is_none")]
     pub namespace: Option<String>,
+
+    /// Generate configuration (for `odk generate`)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub generate: Option<GenerateConfig>,
+}
+
+/// Configuration for the `generate` command.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GenerateConfig {
+    /// Generation targets (e.g. ["sdk", "react-query", "msw"])
+    #[serde(default)]
+    pub targets: Vec<String>,
+
+    /// Output directory for generated files
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub output: Option<Utf8PathBuf>,
+
+    /// GraphQL operation documents glob pattern
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub operations: Option<String>,
 }
 
 fn default_output() -> Utf8PathBuf {
@@ -216,6 +236,7 @@ pub fn merge_with_cli(
         },
         options: config.options,
         namespace: cli_namespace.clone().or(config.namespace),
+        generate: config.generate,
     }
 }
 
