@@ -490,4 +490,14 @@ mod tests {
         let targets = Target::parse_list("sdk,react-query,msw").unwrap();
         assert_eq!(targets.len(), 3);
     }
+
+    #[test]
+    fn test_mcp_target_parsing() {
+        use super::super::Target;
+
+        assert_eq!(Target::parse("mcp"), Some(Target::Mcp));
+        let targets = Target::parse_list("sdk,mcp").unwrap();
+        assert_eq!(targets.len(), 2);
+        assert!(targets.contains(&Target::Mcp));
+    }
 }

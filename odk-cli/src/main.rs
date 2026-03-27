@@ -119,7 +119,7 @@ enum Commands {
         out: Utf8PathBuf,
 
         /// Generation targets (comma-separated)
-        /// Available: sdk, react-query, msw
+        /// Available: sdk, react-query, msw, mcp
         /// Default: sdk,react-query,msw
         #[arg(short, long, default_value = "sdk,react-query,msw")]
         targets: String,
@@ -678,7 +678,7 @@ fn cmd_generate(
         .map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
-        bail!("No targets specified. Available: sdk, react-query, msw");
+        bail!("No targets specified. Available: sdk, react-query, msw, mcp");
     }
 
     // Load schema

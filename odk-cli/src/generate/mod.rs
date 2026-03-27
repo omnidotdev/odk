@@ -3,6 +3,7 @@
 //! Generates typed SDK clients, framework-specific hooks, and mock
 //! handlers directly from the CompiledSchema IR.
 
+pub mod mcp;
 pub mod msw;
 pub mod react_query;
 pub mod sdk;
@@ -18,6 +19,7 @@ pub enum Target {
     Sdk,
     ReactQuery,
     Msw,
+    Mcp,
 }
 
 impl Target {
@@ -27,6 +29,7 @@ impl Target {
             "sdk" => Some(Target::Sdk),
             "react-query" | "reactquery" => Some(Target::ReactQuery),
             "msw" => Some(Target::Msw),
+            "mcp" => Some(Target::Mcp),
             _ => None,
         }
     }
@@ -45,7 +48,7 @@ impl Target {
                         targets.push(t);
                     }
                 }
-                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw", trimmed)),
+                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp", trimmed)),
             }
         }
         Ok(targets)
@@ -58,6 +61,7 @@ impl fmt::Display for Target {
             Target::Sdk => write!(f, "sdk"),
             Target::ReactQuery => write!(f, "react-query"),
             Target::Msw => write!(f, "msw"),
+            Target::Mcp => write!(f, "mcp"),
         }
     }
 }
@@ -87,6 +91,10 @@ pub fn generate(
 
     if targets.contains(&Target::Msw) {
         output.extend(msw::generate(schema));
+    }
+
+    if targets.contains(&Target::Mcp) {
+        output.extend(mcp::generate(schema));
     }
 
     output
