@@ -9,6 +9,7 @@ pub mod react_query;
 pub mod sdk;
 pub mod util;
 
+use crate::config::McpGenerateConfig;
 use odk_schema::CompiledSchema;
 use std::collections::BTreeMap;
 use std::fmt;
@@ -73,6 +74,7 @@ impl fmt::Display for Target {
 pub fn generate(
     schema: &CompiledSchema,
     targets: &[Target],
+    mcp_config: Option<&McpGenerateConfig>,
 ) -> BTreeMap<String, String> {
     let mut output = BTreeMap::new();
 
@@ -94,7 +96,11 @@ pub fn generate(
     }
 
     if targets.contains(&Target::Mcp) {
-        output.extend(mcp::generate(schema));
+        if let Some(cfg) = mcp_config {
+            output.extend(mcp::generate_with_config(schema, cfg));
+        } else {
+            output.extend(mcp::generate(schema));
+        }
     }
 
     output

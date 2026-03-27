@@ -723,7 +723,13 @@ fn cmd_generate(
     let target_names: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
     eprintln!("Generating targets: {}", target_names.join(", "));
 
-    let output = generate::generate(&schema, &targets);
+    // Extract MCP config if present
+    let mcp_config = cfg
+        .as_ref()
+        .and_then(|c| c.generate.as_ref())
+        .and_then(|g| g.mcp.as_ref());
+
+    let output = generate::generate(&schema, &targets, mcp_config);
 
     // Write output files
     fs::create_dir_all(&final_out)
