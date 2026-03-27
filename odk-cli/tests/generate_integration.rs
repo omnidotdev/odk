@@ -128,3 +128,115 @@ fn test_empty_operations_no_output() {
     let output = generate::generate(&schema, &[Target::Sdk, Target::ReactQuery, Target::Msw], None);
     assert!(output.is_empty());
 }
+
+#[test]
+fn test_mcp_generate_pipeline() {
+    use odk_cli::config::{McpGenerateConfig, McpToolConfig};
+
+    let sdl = r#"
+        type Query {
+            posts(first: Int, condition: PostCondition): PostsConnection
+            projects: ProjectsConnection
+        }
+
+        type Mutation {
+            createPost(input: CreatePostInput!): CreatePostPayload
+            createVote(input: CreateVoteInput!): CreateVotePayload
+        }
+
+        type PostsConnection { totalCount: Int! }
+        type ProjectsConnection { totalCount: Int! }
+        type CreatePostPayload { post: Post }
+        type CreateVotePayload { vote: Vote }
+        type Post { rowId: ID! title: String }
+        type Vote { rowId: ID! voteType: String! }
+        input PostCondition { projectId: ID }
+        input CreatePostInput { post: PostInput! }
+        input CreateVoteInput { vote: VoteInput! }
+        input PostInput { title: String projectId: ID! }
+        input VoteInput { postId: ID! voteType: String! }
+    "#;
+
+    let ops_doc = r#"
+        query ListPosts($first: Int, $condition: PostCondition) {
+            posts(first: $first, condition: $condition) {
+                totalCount
+            }
+        }
+
+        mutation SubmitPost($input: CreatePostInput!) {
+            createPost(input: $input) {
+                post {
+                    rowId
+                    title
+                }
+            }
+        }
+
+        mutation CastVote($input: CreateVoteInput!) {
+            createVote(input: $input) {
+                vote {
+                    rowId
+                    voteType
+                }
+            }
+        }
+    "#;
+
+    let mut schema = graphql::parse_graphql_sdl(sdl, "schema.graphql").unwrap();
+    let (ops, frags) = graphql::parse_graphql_operations(ops_doc, "ops.graphql").unwrap();
+    for op in ops { schema.add_operation(op); }
+    for frag in frags { schema.add_fragment(frag); }
+
+    let mcp_config = McpGenerateConfig {
+        name: "backfeed-mcp".into(),
+        description: "Backfeed feedback tools".into(),
+        tools: vec![
+            McpToolConfig {
+                operation: "SubmitPost".into(),
+                name: Some("submit_feedback".into()),
+                description: Some("Submit feedback to a board".into()),
+            },
+            McpToolConfig {
+                operation: "ListPosts".into(),
+                name: Some("list_feedback".into()),
+                description: None,
+            },
+        ],
+    };
+
+    let output = generate::generate(&schema, &[Target::Mcp], Some(&mcp_config));
+
+    // Should generate index.ts and package.json
+    assert!(output.contains_key("index.ts"), "Missing index.ts");
+    assert!(output.contains_key("package.json"), "Missing package.json");
+
+    let index = &output["index.ts"];
+
+    // Tool names from config
+    assert!(index.contains("\"submit_feedback\""), "Missing submit_feedback tool");
+    assert!(index.contains("\"list_feedback\""), "Missing list_feedback tool");
+
+    // Description from config
+    assert!(index.contains("Submit feedback to a board"));
+
+    // GraphQL documents embedded
+    assert!(index.contains("mutation SubmitPost"));
+    assert!(index.contains("query ListPosts"));
+
+    // MCP SDK imports
+    assert!(index.contains("McpServer"));
+    assert!(index.contains("StdioServerTransport"));
+
+    // GraphQL client setup
+    assert!(index.contains("GraphQLClient"));
+    assert!(index.contains("OMNI_USER_TOKEN"));
+
+    // package.json
+    let pkg = &output["package.json"];
+    assert!(pkg.contains("@omnidotdev/backfeed-mcp"));
+    assert!(pkg.contains("@modelcontextprotocol/sdk"));
+
+    // Should NOT include CastVote (not in config tools list)
+    assert!(!index.contains("CastVote"), "CastVote should not be included");
+}
