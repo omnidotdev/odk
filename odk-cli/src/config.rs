@@ -54,6 +54,40 @@ pub struct GenerateConfig {
     /// GraphQL operation documents glob pattern
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operations: Option<String>,
+
+    /// MCP target-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<McpGenerateConfig>,
+}
+
+/// MCP target configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpGenerateConfig {
+    /// MCP server name (used in package.json and server metadata)
+    pub name: String,
+
+    /// Human-readable description of the MCP server
+    #[serde(default)]
+    pub description: String,
+
+    /// Tools to expose (curated subset of GraphQL operations)
+    #[serde(default)]
+    pub tools: Vec<McpToolConfig>,
+}
+
+/// Configuration for a single MCP tool.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToolConfig {
+    /// GraphQL operation name to wrap (must match an operation in the schema)
+    pub operation: String,
+
+    /// Tool name override (defaults to snake_case of operation name)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub name: Option<String>,
+
+    /// Tool description override (defaults to operation description from schema)
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
 }
 
 fn default_output() -> Utf8PathBuf {
@@ -266,5 +300,38 @@ mod tests {
         let stripped = strip_json_comments(input);
         let parsed: serde_json::Value = serde_json::from_str(&stripped).unwrap();
         assert_eq!(parsed["url"], "https://example.com/path");
+    }
+
+    #[test]
+    fn test_mcp_config_deserialization() {
+        let json = r#"{
+            "schema": "schema.graphql",
+            "generate": {
+                "targets": ["mcp"],
+                "mcp": {
+                    "name": "backfeed-mcp",
+                    "description": "Backfeed feedback tools",
+                    "tools": [
+                        {
+                            "operation": "createPost",
+                            "name": "submit_feedback",
+                            "description": "Submit feedback to a board"
+                        },
+                        {
+                            "operation": "posts"
+                        }
+                    ]
+                }
+            }
+        }"#;
+
+        let config: OdkConfig = serde_json::from_str(json).unwrap();
+        let generate = config.generate.unwrap();
+        let mcp = generate.mcp.unwrap();
+        assert_eq!(mcp.name, "backfeed-mcp");
+        assert_eq!(mcp.tools.len(), 2);
+        assert_eq!(mcp.tools[0].operation, "createPost");
+        assert_eq!(mcp.tools[0].name.as_deref(), Some("submit_feedback"));
+        assert_eq!(mcp.tools[1].name, None);
     }
 }
