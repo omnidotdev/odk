@@ -13,7 +13,7 @@ use std::path::PathBuf;
 use std::process::Command;
 
 mod builder;
-mod config;
+use odk_cli::config;
 mod error_mapper;
 mod extism_host;
 mod source_map;
