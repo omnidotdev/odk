@@ -3,7 +3,7 @@
 //! Generates a standalone MCP server that wraps GraphQL operations as
 //! tools, with Zod input schemas and STDIO transport.
 
-use crate::config::McpConfig;
+use crate::config::{McpConfig, McpToolParameter};
 use odk_schema::{CompiledField, CompiledModel, CompiledSchema, CompiledType, ScalarType};
 use std::collections::BTreeMap;
 
@@ -32,6 +32,12 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
         "import { GraphQLClient } from \"graphql-request\";".to_string(),
         String::new(),
     ];
+
+    // Emit set() helper if any tool uses custom parameters
+    if needs_set_helper(config) {
+        lines.extend(generate_set_helper());
+        lines.push(String::new());
+    }
 
     // GraphQL operation documents
     for tool_cfg in &config.tools {
@@ -91,26 +97,46 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
             .unwrap();
 
         let doc_name = format!("{}Document", op.name);
-        let zod_schema = build_zod_schema_for_variables(&op.variables, &schema.models);
 
         lines.push("server.tool(".to_string());
         lines.push(format!("  \"{}\",", tool_cfg.name));
         lines.push(format!("  \"{}\",", escape_str(&tool_cfg.description)));
-        lines.push(format!("  {{{}}},", zod_schema));
 
-        if op.variables.is_empty() {
-            lines.push("  async () => {".to_string());
-            lines.push(format!(
-                "    const data = await graphql.request({});",
-                doc_name
-            ));
+        if tool_cfg.parameters.is_empty() {
+            // Existing path: derive schema from GraphQL variables
+            let zod_schema = build_zod_schema_for_variables(&op.variables, &schema.models);
+            lines.push(format!("  {{{}}},", zod_schema));
+
+            if op.variables.is_empty() {
+                lines.push("  async () => {".to_string());
+                lines.push(format!(
+                    "    const data = await graphql.request({});",
+                    doc_name
+                ));
+            } else {
+                let var_names: Vec<&str> = op.variables.iter().map(|v| v.name.as_str()).collect();
+                let destructure = var_names.join(", ");
+                lines.push(format!("  async ({{ {} }}) => {{", destructure));
+                lines.push(format!(
+                    "    const data = await graphql.request({}, {{ {} }});",
+                    doc_name, destructure
+                ));
+            }
         } else {
-            let var_names: Vec<&str> = op.variables.iter().map(|v| v.name.as_str()).collect();
-            let destructure = var_names.join(", ");
-            lines.push(format!("  async ({{ {} }}) => {{", destructure));
+            // Custom path: curated parameters with mapTo variable builder
+            let zod_schema = build_zod_schema_for_params(&tool_cfg.parameters);
+            lines.push(format!("  {{{}}},", zod_schema));
+            lines.push("  async (params) => {".to_string());
+            lines.push("    const variables: Record<string, unknown> = {};".to_string());
+            for param in &tool_cfg.parameters {
+                lines.push(format!(
+                    "    if (params.{} !== undefined) set(variables, \"{}\", params.{});",
+                    param.name, param.map_to, param.name
+                ));
+            }
             lines.push(format!(
-                "    const data = await graphql.request({}, {{ {} }});",
-                doc_name, destructure
+                "    const data = await graphql.request({}, variables);",
+                doc_name
             ));
         }
 
@@ -238,6 +264,83 @@ fn object_fields_to_zod(fields: &[CompiledField], models: &[CompiledModel]) -> S
         })
         .collect();
     format!("z.object({{ {} }})", field_strs.join(", "))
+}
+
+/// Check if any tool uses custom parameters (needs the set() helper).
+fn needs_set_helper(config: &McpConfig) -> bool {
+    config.tools.iter().any(|t| !t.parameters.is_empty())
+}
+
+/// Generate the set() helper function for dot-path variable assignment.
+fn generate_set_helper() -> Vec<String> {
+    vec![
+        "function set(obj: Record<string, unknown>, path: string, value: unknown) {".to_string(),
+        "  const keys = path.split(\".\");".to_string(),
+        "  let current = obj;".to_string(),
+        "  for (let i = 0; i < keys.length - 1; i++) {".to_string(),
+        "    if (!(keys[i] in current)) current[keys[i]] = {};".to_string(),
+        "    current = current[keys[i]] as Record<string, unknown>;".to_string(),
+        "  }".to_string(),
+        "  current[keys[keys.length - 1]] = value;".to_string(),
+        "}".to_string(),
+    ]
+}
+
+/// Build Zod schema entries from curated parameter definitions.
+fn build_zod_schema_for_params(params: &[McpToolParameter]) -> String {
+    let entries: Vec<String> = params
+        .iter()
+        .map(|p| format!(" {}: {}", p.name, param_to_zod(p)))
+        .collect();
+    entries.join(",")
+}
+
+/// Convert a single McpToolParameter to a Zod expression.
+fn param_to_zod(param: &McpToolParameter) -> String {
+    let mut zod = if !param.enum_values.is_empty() {
+        let quoted: Vec<String> = param
+            .enum_values
+            .iter()
+            .map(|v| format!("\"{}\"", v))
+            .collect();
+        format!("z.enum([{}])", quoted.join(", "))
+    } else {
+        match param.type_.as_str() {
+            "number" => "z.number()".to_string(),
+            "boolean" => "z.boolean()".to_string(),
+            _ => "z.string()".to_string(),
+        }
+    };
+
+    // Apply format refinements (only for non-enum string types)
+    if param.enum_values.is_empty()
+        && param.type_ == "string"
+        && let Some(fmt) = &param.format
+    {
+        match fmt.as_str() {
+            "uuid" => zod = format!("{}.uuid()", zod),
+            "datetime" => zod = format!("{}.datetime()", zod),
+            "email" => zod = format!("{}.email()", zod),
+            _ => {}
+        }
+    }
+
+    // Apply default
+    if let Some(default) = &param.default {
+        zod = format!("{}.default({})", zod, default);
+    }
+
+    // Apply optionality
+    if !param.required {
+        zod = format!("{}.optional()", zod);
+    }
+
+    // Apply description
+    if let Some(desc) = &param.description {
+        zod = format!("{}.describe(\"{}\")", zod, escape_str(desc));
+    }
+
+    zod
 }
 
 fn generate_package_json(config: &McpConfig) -> String {
@@ -628,5 +731,255 @@ mod tests {
         assert!(server.contains("async ({ id })"));
         // CreatePost has a variable `input` — should destructure it
         assert!(server.contains("async ({ input })"));
+    }
+
+    // --- Custom parameter tests ---
+
+    fn test_param(name: &str, type_: &str, map_to: &str) -> McpToolParameter {
+        McpToolParameter {
+            name: name.to_string(),
+            type_: type_.to_string(),
+            format: None,
+            enum_values: vec![],
+            required: false,
+            default: None,
+            description: None,
+            map_to: map_to.to_string(),
+        }
+    }
+
+    #[test]
+    fn test_custom_params_zod_schema() {
+        let param = McpToolParameter {
+            name: "projectId".to_string(),
+            type_: "string".to_string(),
+            format: Some("uuid".to_string()),
+            enum_values: vec![],
+            required: false,
+            default: None,
+            description: Some("Filter by project".to_string()),
+            map_to: "condition.projectId".to_string(),
+        };
+        let zod = param_to_zod(&param);
+        assert!(zod.contains("z.string()"));
+        assert!(zod.contains(".uuid()"));
+        assert!(zod.contains(".optional()"));
+        assert!(zod.contains(".describe(\"Filter by project\")"));
+    }
+
+    #[test]
+    fn test_custom_params_enum() {
+        let param = McpToolParameter {
+            name: "priority".to_string(),
+            type_: "string".to_string(),
+            format: None,
+            enum_values: vec!["low".to_string(), "medium".to_string(), "high".to_string()],
+            required: false,
+            default: None,
+            description: None,
+            map_to: "condition.priority".to_string(),
+        };
+        let zod = param_to_zod(&param);
+        assert!(zod.contains("z.enum([\"low\", \"medium\", \"high\"])"));
+        assert!(zod.contains(".optional()"));
+        // enum should NOT have .uuid() or other format
+        assert!(!zod.contains(".uuid()"));
+    }
+
+    #[test]
+    fn test_custom_params_required() {
+        let param = McpToolParameter {
+            name: "content".to_string(),
+            type_: "string".to_string(),
+            format: None,
+            enum_values: vec![],
+            required: true,
+            default: None,
+            description: Some("Task title".to_string()),
+            map_to: "input.task.content".to_string(),
+        };
+        let zod = param_to_zod(&param);
+        assert!(zod.contains("z.string()"));
+        assert!(!zod.contains(".optional()"));
+        assert!(zod.contains(".describe(\"Task title\")"));
+    }
+
+    #[test]
+    fn test_custom_params_default_value() {
+        let param = McpToolParameter {
+            name: "limit".to_string(),
+            type_: "number".to_string(),
+            format: None,
+            enum_values: vec![],
+            required: false,
+            default: Some(serde_json::json!(20)),
+            description: None,
+            map_to: "first".to_string(),
+        };
+        let zod = param_to_zod(&param);
+        assert!(zod.contains("z.number()"));
+        assert!(zod.contains(".default(20)"));
+        assert!(zod.contains(".optional()"));
+    }
+
+    #[test]
+    fn test_custom_params_variable_builder() {
+        let mut schema = CompiledSchema::new("Test");
+        schema.add_operation(CompiledOperation {
+            name: "tasks".into(),
+            kind: OperationKind::Query,
+            input: None,
+            output: CompiledType::Scalar {
+                name: ScalarType::Unknown,
+            },
+            variables: vec![],
+            selection: None,
+            description: None,
+            extensions: Extensions::default(),
+            directives: vec![],
+        });
+
+        let config = McpConfig {
+            name: "test".to_string(),
+            description: None,
+            tools: vec![McpToolConfig {
+                operation: "tasks".to_string(),
+                name: "list_tasks".to_string(),
+                description: "List tasks".to_string(),
+                parameters: vec![
+                    test_param("projectId", "string", "condition.projectId"),
+                    test_param("priority", "string", "condition.priority"),
+                ],
+            }],
+        };
+
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        assert!(server.contains("async (params)"));
+        assert!(server.contains("const variables: Record<string, unknown> = {};"));
+        assert!(server.contains("set(variables, \"condition.projectId\", params.projectId)"));
+        assert!(server.contains("set(variables, \"condition.priority\", params.priority)"));
+    }
+
+    #[test]
+    fn test_custom_params_set_helper_present() {
+        let mut schema = CompiledSchema::new("Test");
+        schema.add_operation(CompiledOperation {
+            name: "tasks".into(),
+            kind: OperationKind::Query,
+            input: None,
+            output: CompiledType::Scalar {
+                name: ScalarType::Unknown,
+            },
+            variables: vec![],
+            selection: None,
+            description: None,
+            extensions: Extensions::default(),
+            directives: vec![],
+        });
+
+        let config = McpConfig {
+            name: "test".to_string(),
+            description: None,
+            tools: vec![McpToolConfig {
+                operation: "tasks".to_string(),
+                name: "list_tasks".to_string(),
+                description: "List".to_string(),
+                parameters: vec![test_param("x", "string", "a.b")],
+            }],
+        };
+
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        assert!(server.contains("function set(obj: Record<string, unknown>"));
+    }
+
+    #[test]
+    fn test_no_set_helper_without_params() {
+        let schema = test_schema();
+        let config = test_config(); // no parameters on any tool
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        assert!(!server.contains("function set("));
+    }
+
+    #[test]
+    fn test_mixed_tools() {
+        let mut schema = CompiledSchema::new("Test");
+        schema.add_operation(CompiledOperation {
+            name: "GetUser".into(),
+            kind: OperationKind::Query,
+            input: None,
+            output: CompiledType::Scalar {
+                name: ScalarType::Unknown,
+            },
+            variables: vec![Variable {
+                name: "id".into(),
+                variable_type: CompiledType::Scalar {
+                    name: ScalarType::String,
+                },
+                required: true,
+                default_value: None,
+                description: None,
+            }],
+            selection: Some(SelectionSet {
+                fields: vec![FieldSelection {
+                    name: "id".into(),
+                    alias: None,
+                    arguments: vec![],
+                    selection: None,
+                    directives: vec![],
+                }],
+                fragment_spreads: vec![],
+                inline_fragments: vec![],
+            }),
+            description: None,
+            extensions: Extensions::default(),
+            directives: vec![],
+        });
+        schema.add_operation(CompiledOperation {
+            name: "tasks".into(),
+            kind: OperationKind::Query,
+            input: None,
+            output: CompiledType::Scalar {
+                name: ScalarType::Unknown,
+            },
+            variables: vec![],
+            selection: None,
+            description: None,
+            extensions: Extensions::default(),
+            directives: vec![],
+        });
+
+        let config = McpConfig {
+            name: "mixed".to_string(),
+            description: None,
+            tools: vec![
+                // No parameters — uses existing path
+                McpToolConfig {
+                    operation: "GetUser".to_string(),
+                    name: "get_user".to_string(),
+                    description: "Get user".to_string(),
+                    parameters: vec![],
+                },
+                // With parameters — uses custom path
+                McpToolConfig {
+                    operation: "tasks".to_string(),
+                    name: "list_tasks".to_string(),
+                    description: "List tasks".to_string(),
+                    parameters: vec![test_param("projectId", "string", "condition.projectId")],
+                },
+            ],
+        };
+
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        // set helper present (one tool uses params)
+        assert!(server.contains("function set("));
+        // GetUser uses old path
+        assert!(server.contains("async ({ id })"));
+        // tasks uses new path
+        assert!(server.contains("async (params)"));
+        assert!(server.contains("set(variables,"));
     }
 }
