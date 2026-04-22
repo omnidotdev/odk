@@ -27,7 +27,8 @@ fn generate_client(schema: &CompiledSchema) -> String {
     let mut lines = Vec::new();
 
     // Imports
-    lines.push("import { graphql, type ResultOf, type VariablesOf } from \"gql.tada\";".to_string());
+    lines
+        .push("import { graphql, type ResultOf, type VariablesOf } from \"gql.tada\";".to_string());
     lines.push("import { GraphQLClient } from \"graphql-request\";".to_string());
     lines.push(String::new());
 
@@ -106,18 +107,34 @@ mod tests {
             name: "GetUser".into(),
             kind: OperationKind::Query,
             input: None,
-            output: CompiledType::Ref { name: "User".into() },
+            output: CompiledType::Ref {
+                name: "User".into(),
+            },
             variables: vec![Variable {
                 name: "id".into(),
-                variable_type: CompiledType::Scalar { name: ScalarType::String },
+                variable_type: CompiledType::Scalar {
+                    name: ScalarType::String,
+                },
                 required: true,
                 default_value: None,
                 description: None,
             }],
             selection: Some(SelectionSet {
                 fields: vec![
-                    FieldSelection { name: "id".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
-                    FieldSelection { name: "name".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
+                    FieldSelection {
+                        name: "id".into(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                    FieldSelection {
+                        name: "name".into(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
                 ],
                 fragment_spreads: vec![],
                 inline_fragments: vec![],
@@ -131,18 +148,34 @@ mod tests {
             name: "CreatePost".into(),
             kind: OperationKind::Mutation,
             input: None,
-            output: CompiledType::Ref { name: "Post".into() },
+            output: CompiledType::Ref {
+                name: "Post".into(),
+            },
             variables: vec![Variable {
                 name: "input".into(),
-                variable_type: CompiledType::Ref { name: "CreatePostInput".into() },
+                variable_type: CompiledType::Ref {
+                    name: "CreatePostInput".into(),
+                },
                 required: true,
                 default_value: None,
                 description: None,
             }],
             selection: Some(SelectionSet {
                 fields: vec![
-                    FieldSelection { name: "id".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
-                    FieldSelection { name: "title".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
+                    FieldSelection {
+                        name: "id".into(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
+                    FieldSelection {
+                        name: "title".into(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    },
                 ],
                 fragment_spreads: vec![],
                 inline_fragments: vec![],
@@ -167,7 +200,10 @@ mod tests {
         let schema = test_schema();
         let output = generate(&schema);
         let client = &output["client.ts"];
-        assert!(client.contains("import { graphql, type ResultOf, type VariablesOf } from \"gql.tada\""));
+        assert!(
+            client
+                .contains("import { graphql, type ResultOf, type VariablesOf } from \"gql.tada\"")
+        );
         assert!(client.contains("import { GraphQLClient } from \"graphql-request\""));
     }
 
@@ -188,8 +224,12 @@ mod tests {
         let output = generate(&schema);
         let client = &output["client.ts"];
         assert!(client.contains("export type GetUserResult = ResultOf<typeof GetUserDocument>"));
-        assert!(client.contains("export type GetUserVariables = VariablesOf<typeof GetUserDocument>"));
-        assert!(client.contains("export type CreatePostResult = ResultOf<typeof CreatePostDocument>"));
+        assert!(
+            client.contains("export type GetUserVariables = VariablesOf<typeof GetUserDocument>")
+        );
+        assert!(
+            client.contains("export type CreatePostResult = ResultOf<typeof CreatePostDocument>")
+        );
     }
 
     #[test]

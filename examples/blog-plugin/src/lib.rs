@@ -6,14 +6,6 @@
 use odk_pdk::{datetime_field, email_field, string_enum, uuid_field};
 use odk_pdk::{prelude::*, string_field};
 
-#[derive(Debug, Clone)]
-struct Comment {
-    id: String,
-    author: String,
-    content: String,
-    created_at: String,
-}
-
 /// Build the Blog API schema
 fn build_schema() -> CompiledSchema {
     let mut schema = CompiledSchema::new("BlogAPI");

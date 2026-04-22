@@ -133,11 +133,11 @@ fn get_crate_name(cargo_toml: &Utf8PathBuf) -> Result<String> {
     // Simple TOML parsing for name field
     for line in content.lines() {
         let line = line.trim();
-        if line.starts_with("name") {
-            if let Some(value) = line.split('=').nth(1) {
-                let name = value.trim().trim_matches('"').trim_matches('\'');
-                return Ok(name.to_string());
-            }
+        if line.starts_with("name")
+            && let Some(value) = line.split('=').nth(1)
+        {
+            let name = value.trim().trim_matches('"').trim_matches('\'');
+            return Ok(name.to_string());
         }
     }
 
@@ -176,23 +176,21 @@ fn find_wasm_output(
 
         // Stop if we find a Cargo.toml with [workspace]
         let cargo_toml = current.join("Cargo.toml");
-        if cargo_toml.exists() {
-            if let Ok(content) = fs::read_to_string(&cargo_toml) {
-                if content.contains("[workspace]") {
-                    // This is the workspace root, check its target
-                    let workspace_target = current
-                        .join("target")
-                        .join("wasm32-unknown-unknown")
-                        .join(profile)
-                        .join(wasm_filename);
+        if cargo_toml.exists()
+            && let Ok(content) = fs::read_to_string(&cargo_toml)
+            && content.contains("[workspace]")
+        {
+            // This is the workspace root, check its target
+            let workspace_target = current
+                .join("target")
+                .join("wasm32-unknown-unknown")
+                .join(profile)
+                .join(wasm_filename);
 
-                    if workspace_target.exists() {
-                        return Utf8PathBuf::try_from(workspace_target)
-                            .context("Invalid UTF-8 in path");
-                    }
-                    break;
-                }
+            if workspace_target.exists() {
+                return Utf8PathBuf::try_from(workspace_target).context("Invalid UTF-8 in path");
             }
+            break;
         }
     }
 

@@ -104,10 +104,7 @@ pub fn introspect_schema(url: &str) -> Result<CompiledSchema, GraphqlLoadError> 
         .body_mut()
         .read_json()
         .map_err(|e| {
-            GraphqlLoadError::Validation(format!(
-                "Failed to parse introspection response: {}",
-                e
-            ))
+            GraphqlLoadError::Validation(format!("Failed to parse introspection response: {}", e))
         })?;
 
     // Extract the schema from the response
@@ -115,9 +112,7 @@ pub fn introspect_schema(url: &str) -> Result<CompiledSchema, GraphqlLoadError> 
         .get("data")
         .and_then(|d| d.get("__schema"))
         .ok_or_else(|| {
-            GraphqlLoadError::Validation(
-                "Introspection response missing data.__schema".to_string(),
-            )
+            GraphqlLoadError::Validation("Introspection response missing data.__schema".to_string())
         })?;
 
     // Convert introspection JSON to SDL, then parse through the SDL parser
@@ -137,14 +132,8 @@ fn introspection_to_sdl(schema: &serde_json::Value) -> Result<String, GraphqlLoa
         })?;
 
     for type_def in types {
-        let name = type_def
-            .get("name")
-            .and_then(|n| n.as_str())
-            .unwrap_or("");
-        let kind = type_def
-            .get("kind")
-            .and_then(|k| k.as_str())
-            .unwrap_or("");
+        let name = type_def.get("name").and_then(|n| n.as_str()).unwrap_or("");
+        let kind = type_def.get("kind").and_then(|k| k.as_str()).unwrap_or("");
 
         // Skip built-in types
         if name.starts_with("__") {
@@ -191,11 +180,9 @@ fn introspection_to_sdl(schema: &serde_json::Value) -> Result<String, GraphqlLoa
                 sdl.push_str(&format!("input {} {{\n", name));
                 if let Some(fields) = type_def.get("inputFields").and_then(|f| f.as_array()) {
                     for field in fields {
-                        let fname =
-                            field.get("name").and_then(|n| n.as_str()).unwrap_or("");
-                        let ftype = type_ref_to_sdl(
-                            field.get("type").unwrap_or(&serde_json::json!(null)),
-                        );
+                        let fname = field.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                        let ftype =
+                            type_ref_to_sdl(field.get("type").unwrap_or(&serde_json::json!(null)));
                         sdl.push_str(&format!("  {}: {}\n", fname, ftype));
                     }
                 }
@@ -210,8 +197,7 @@ fn introspection_to_sdl(schema: &serde_json::Value) -> Result<String, GraphqlLoa
                 sdl.push_str(&format!("enum {} {{\n", name));
                 if let Some(vals) = type_def.get("enumValues").and_then(|v| v.as_array()) {
                     for val in vals {
-                        let vname =
-                            val.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                        let vname = val.get("name").and_then(|n| n.as_str()).unwrap_or("");
                         sdl.push_str(&format!("  {}\n", vname));
                     }
                 }
@@ -227,11 +213,7 @@ fn introspection_to_sdl(schema: &serde_json::Value) -> Result<String, GraphqlLoa
                             .collect::<Vec<_>>()
                     })
                     .unwrap_or_default();
-                sdl.push_str(&format!(
-                    "union {} = {}\n\n",
-                    name,
-                    members.join(" | ")
-                ));
+                sdl.push_str(&format!("union {} = {}\n\n", name, members.join(" | ")));
             }
             "SCALAR" => {
                 sdl.push_str(&format!("scalar {}\n\n", name));
@@ -248,8 +230,7 @@ fn emit_fields(sdl: &mut String, type_def: &serde_json::Value) {
     if let Some(fields) = type_def.get("fields").and_then(|f| f.as_array()) {
         for field in fields {
             let fname = field.get("name").and_then(|n| n.as_str()).unwrap_or("");
-            let ftype =
-                type_ref_to_sdl(field.get("type").unwrap_or(&serde_json::json!(null)));
+            let ftype = type_ref_to_sdl(field.get("type").unwrap_or(&serde_json::json!(null)));
 
             // Emit arguments
             let args = field.get("args").and_then(|a| a.as_array());
@@ -260,8 +241,7 @@ fn emit_fields(sdl: &mut String, type_def: &serde_json::Value) {
                     let arg_strs: Vec<String> = args
                         .iter()
                         .map(|arg| {
-                            let aname =
-                                arg.get("name").and_then(|n| n.as_str()).unwrap_or("");
+                            let aname = arg.get("name").and_then(|n| n.as_str()).unwrap_or("");
                             let atype = type_ref_to_sdl(
                                 arg.get("type").unwrap_or(&serde_json::json!(null)),
                             );
@@ -281,26 +261,16 @@ fn emit_fields(sdl: &mut String, type_def: &serde_json::Value) {
 
 /// Convert a `__Type` introspection JSON reference to SDL type notation.
 fn type_ref_to_sdl(type_ref: &serde_json::Value) -> String {
-    let kind = type_ref
-        .get("kind")
-        .and_then(|k| k.as_str())
-        .unwrap_or("");
-    let name = type_ref
-        .get("name")
-        .and_then(|n| n.as_str())
-        .unwrap_or("");
+    let kind = type_ref.get("kind").and_then(|k| k.as_str()).unwrap_or("");
+    let name = type_ref.get("name").and_then(|n| n.as_str()).unwrap_or("");
 
     match kind {
         "NON_NULL" => {
-            let inner = type_ref
-                .get("ofType")
-                .unwrap_or(&serde_json::json!(null));
+            let inner = type_ref.get("ofType").unwrap_or(&serde_json::json!(null));
             format!("{}!", type_ref_to_sdl(inner))
         }
         "LIST" => {
-            let inner = type_ref
-                .get("ofType")
-                .unwrap_or(&serde_json::json!(null));
+            let inner = type_ref.get("ofType").unwrap_or(&serde_json::json!(null));
             format!("[{}]", type_ref_to_sdl(inner))
         }
         _ => name.to_string(),

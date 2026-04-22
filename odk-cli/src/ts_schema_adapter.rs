@@ -77,6 +77,7 @@ pub enum TsTypeInfo {
 
 impl TsCompiledSchema {
     /// Convert to canonical odk-schema format.
+    #[allow(clippy::wrong_self_convention)]
     pub fn to_compiled_schema(self) -> CompiledSchema {
         CompiledSchema {
             name: self.name,
@@ -100,6 +101,7 @@ impl TsCompiledSchema {
 }
 
 impl TsCompiledModel {
+    #[allow(clippy::wrong_self_convention)]
     fn to_compiled_model(self) -> CompiledModel {
         CompiledModel {
             name: self.name,
@@ -116,6 +118,7 @@ impl TsCompiledModel {
 }
 
 impl TsCompiledProperty {
+    #[allow(clippy::wrong_self_convention)]
     fn to_compiled_field(self) -> CompiledField {
         CompiledField {
             name: self.name,
@@ -130,6 +133,7 @@ impl TsCompiledProperty {
 }
 
 impl TsCompiledUnion {
+    #[allow(clippy::wrong_self_convention)]
     fn to_compiled_union(self) -> CompiledUnion {
         CompiledUnion {
             name: self.name,
@@ -151,6 +155,7 @@ impl TsCompiledUnion {
 }
 
 impl TsTypeInfo {
+    #[allow(clippy::wrong_self_convention)]
     fn to_compiled_type(self) -> CompiledType {
         match self {
             TsTypeInfo::Scalar { original_type, .. } => CompiledType::Scalar {

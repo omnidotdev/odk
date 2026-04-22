@@ -131,6 +131,7 @@ if __name__ == "__main__":
     print(get_schema())
 "#;
 
+#[allow(dead_code)]
 pub const PYTHON_PYPROJECT: &str = r#"[project]
 name = "{{name}}"
 version = "0.1.0"

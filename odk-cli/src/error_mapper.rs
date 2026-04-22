@@ -114,12 +114,12 @@ pub fn remap_errors(errors: Vec<RemappedError>, source_map: &SourceMap) -> Vec<R
     errors
         .into_iter()
         .map(|mut error| {
-            if let Some(line) = error.line {
-                if let Some(original) = source_map.lookup(line, error.column.unwrap_or(0)) {
-                    error.file = Some(original.file.clone());
-                    error.line = Some(original.line);
-                    error.column = Some(original.column);
-                }
+            if let Some(line) = error.line
+                && let Some(original) = source_map.lookup(line, error.column.unwrap_or(0))
+            {
+                error.file = Some(original.file.clone());
+                error.line = Some(original.line);
+                error.column = Some(original.column);
             }
             error
         })

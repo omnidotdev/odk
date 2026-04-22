@@ -3,7 +3,7 @@
 //! Generates .tsp.map sidecar files that map TypeSpec positions
 //! back to original source locations (YAML, TS, etc.).
 
-use odk_schema::{CompiledSchema, SourceMap, SourceSpan};
+use odk_schema::{CompiledSchema, SourceMap};
 use std::path::Path;
 
 /// Generate a source map for TypeSpec output.
@@ -83,7 +83,7 @@ pub fn write_source_map(map: &SourceMap, tsp_path: &Path) -> std::io::Result<()>
 #[cfg(test)]
 mod tests {
     use super::*;
-    use odk_schema::{CompiledField, CompiledModel, CompiledType};
+    use odk_schema::{CompiledField, CompiledModel, CompiledType, SourceSpan};
 
     #[test]
     fn test_generate_source_map() {

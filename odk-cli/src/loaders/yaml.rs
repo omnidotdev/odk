@@ -336,8 +336,7 @@ fn parse_type(type_str: &str) -> Result<CompiledType, YamlLoadError> {
     let type_str = type_str.trim();
 
     // Check for array syntax
-    if type_str.ends_with("[]") {
-        let inner = &type_str[..type_str.len() - 2];
+    if let Some(inner) = type_str.strip_suffix("[]") {
         let inner_type = parse_type(inner)?;
         return Ok(CompiledType::Array {
             items: Box::new(inner_type),
