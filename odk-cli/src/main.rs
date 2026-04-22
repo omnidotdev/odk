@@ -13,15 +13,17 @@ use std::path::PathBuf;
 use std::process::Command;
 
 mod builder;
-mod config;
+#[allow(dead_code)]
 mod error_mapper;
 mod extism_host;
+#[allow(dead_code)]
 mod source_map;
 mod templates;
 mod ts_executor;
 mod ts_schema_adapter;
 mod typespec_bridge;
 
+use odk_cli::config;
 use odk_cli::loaders;
 
 #[derive(Parser, Debug)]
@@ -119,7 +121,7 @@ enum Commands {
         out: Utf8PathBuf,
 
         /// Generation targets (comma-separated)
-        /// Available: sdk, react-query, msw
+        /// Available: sdk, react-query, msw, mcp
         /// Default: sdk,react-query,msw
         #[arg(short, long, default_value = "sdk,react-query,msw")]
         targets: String,
@@ -161,7 +163,9 @@ fn main() -> Result<()> {
             keep_temp,
             operations,
             introspect,
-        } => cmd_compile(input, config, out, emit, namespace, keep_temp, operations, introspect),
+        } => cmd_compile(
+            input, config, out, emit, namespace, keep_temp, operations, introspect,
+        ),
 
         Commands::Init { lang, name } => cmd_init(lang, name),
 
@@ -239,6 +243,7 @@ fn load_schema(input: &Utf8PathBuf) -> Result<CompiledSchema> {
 }
 
 /// Compile command: load schema and emit to targets.
+#[allow(clippy::too_many_arguments)]
 fn cmd_compile(
     input: Option<Utf8PathBuf>,
     config_path: Option<Utf8PathBuf>,
@@ -378,10 +383,10 @@ fn compile_with_typespec(
         let temp_node_modules = temp_path.join("node_modules");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&node_modules, &temp_node_modules)
-            .with_context(|| format!("Failed to symlink node_modules"))?;
+            .with_context(|| "Failed to symlink node_modules".to_string())?;
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&node_modules, &temp_node_modules)
-            .with_context(|| format!("Failed to symlink node_modules"))?;
+            .with_context(|| "Failed to symlink node_modules".to_string())?;
         eprintln!("  Using node_modules from {}", node_modules.display());
     } else {
         eprintln!("  Installing TypeSpec dependencies...");
@@ -616,12 +621,12 @@ fn cmd_check(input: Utf8PathBuf, operations: Option<String>) -> Result<()> {
         println!("  - {} on {}", frag.name, frag.type_condition);
     }
 
-    if let Some(warnings) = &schema.warnings {
-        if !warnings.is_empty() {
-            println!("\nWarnings:");
-            for w in warnings {
-                println!("  - {}", w);
-            }
+    if let Some(warnings) = &schema.warnings
+        && !warnings.is_empty()
+    {
+        println!("\nWarnings:");
+        for w in warnings {
+            println!("  - {}", w);
         }
     }
 
@@ -662,23 +667,18 @@ fn cmd_generate(
     } else {
         targets_str
     };
-    let final_operations = operations.or_else(|| {
-        gen_cfg.and_then(|g| g.operations.clone())
-    });
-    let final_out = if out == Utf8PathBuf::from("./generated") {
-        gen_cfg
-            .and_then(|g| g.output.clone())
-            .unwrap_or(out)
+    let final_operations = operations.or_else(|| gen_cfg.and_then(|g| g.operations.clone()));
+    let final_out = if out.as_str() == "./generated" {
+        gen_cfg.and_then(|g| g.output.clone()).unwrap_or(out)
     } else {
         out
     };
 
     // Parse targets
-    let targets = Target::parse_list(&final_targets_str)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let targets = Target::parse_list(&final_targets_str).map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
-        bail!("No targets specified. Available: sdk, react-query, msw");
+        bail!("No targets specified. Available: sdk, react-query, msw, mcp");
     }
 
     // Load schema
@@ -723,7 +723,7 @@ fn cmd_generate(
     let target_names: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
     eprintln!("Generating targets: {}", target_names.join(", "));
 
-    let output = generate::generate(&schema, &targets);
+    let output = generate::generate(&schema, &targets, gen_cfg);
 
     // Write output files
     fs::create_dir_all(&final_out)
@@ -731,8 +731,7 @@ fn cmd_generate(
 
     for (filename, content) in &output {
         let path = final_out.join(filename);
-        fs::write(&path, content)
-            .with_context(|| format!("Failed to write {}", path))?;
+        fs::write(&path, content).with_context(|| format!("Failed to write {}", path))?;
         eprintln!("  Wrote {}", path);
     }
 

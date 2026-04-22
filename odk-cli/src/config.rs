@@ -43,7 +43,7 @@ pub struct OdkConfig {
 /// Configuration for the `generate` command.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct GenerateConfig {
-    /// Generation targets (e.g. ["sdk", "react-query", "msw"])
+    /// Generation targets (e.g. ["sdk", "react-query", "msw", "mcp"])
     #[serde(default)]
     pub targets: Vec<String>,
 
@@ -54,6 +54,38 @@ pub struct GenerateConfig {
     /// GraphQL operation documents glob pattern
     #[serde(skip_serializing_if = "Option::is_none")]
     pub operations: Option<String>,
+
+    /// MCP target-specific configuration
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub mcp: Option<McpConfig>,
+}
+
+/// MCP server generation configuration.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct McpConfig {
+    /// Server name for the MCP manifest
+    pub name: String,
+
+    /// Server description
+    #[serde(default)]
+    pub description: Option<String>,
+
+    /// Tool definitions mapping GraphQL operations to MCP tools
+    #[serde(default)]
+    pub tools: Vec<McpToolConfig>,
+}
+
+/// A single MCP tool mapped from a GraphQL operation.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToolConfig {
+    /// Name of the GraphQL operation (must match a CompiledOperation.name)
+    pub operation: String,
+
+    /// MCP tool name (snake_case, used by LLM)
+    pub name: String,
+
+    /// Human-readable description of what this tool does
+    pub description: String,
 }
 
 fn default_output() -> Utf8PathBuf {

@@ -18,10 +18,7 @@ pub fn generate(schema: &CompiledSchema, config: &McpConfig) -> BTreeMap<String,
     }
 
     output.insert("server.ts".to_string(), generate_server(schema, config));
-    output.insert(
-        "package.json".to_string(),
-        generate_package_json(config),
-    );
+    output.insert("package.json".to_string(), generate_package_json(config));
 
     output
 }
@@ -81,9 +78,7 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
 
     // GraphQL client
     lines.push("const graphql = new GraphQLClient(".to_string());
-    lines.push(
-        "  process.env.GRAPHQL_ENDPOINT ?? \"http://localhost:4000/graphql\"".to_string(),
-    );
+    lines.push("  process.env.GRAPHQL_ENDPOINT ?? \"http://localhost:4000/graphql\"".to_string());
     lines.push(");".to_string());
     lines.push(String::new());
 
@@ -487,19 +482,39 @@ mod tests {
     fn test_zod_scalar_mapping() {
         let models = vec![];
         assert_eq!(
-            compiled_type_to_zod(&CompiledType::Scalar { name: ScalarType::String }, &models),
+            compiled_type_to_zod(
+                &CompiledType::Scalar {
+                    name: ScalarType::String
+                },
+                &models
+            ),
             "z.string()"
         );
         assert_eq!(
-            compiled_type_to_zod(&CompiledType::Scalar { name: ScalarType::Int32 }, &models),
+            compiled_type_to_zod(
+                &CompiledType::Scalar {
+                    name: ScalarType::Int32
+                },
+                &models
+            ),
             "z.number()"
         );
         assert_eq!(
-            compiled_type_to_zod(&CompiledType::Scalar { name: ScalarType::Boolean }, &models),
+            compiled_type_to_zod(
+                &CompiledType::Scalar {
+                    name: ScalarType::Boolean
+                },
+                &models
+            ),
             "z.boolean()"
         );
         assert_eq!(
-            compiled_type_to_zod(&CompiledType::Scalar { name: ScalarType::Url }, &models),
+            compiled_type_to_zod(
+                &CompiledType::Scalar {
+                    name: ScalarType::Url
+                },
+                &models
+            ),
             "z.string()"
         );
     }

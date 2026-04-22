@@ -63,7 +63,7 @@ fn test_full_generate_pipeline() {
 
     // Generate all targets
     let targets = vec![Target::Sdk, Target::ReactQuery, Target::Msw];
-    let output = generate::generate(&schema, &targets);
+    let output = generate::generate(&schema, &targets, None);
 
     // SDK
     assert!(output.contains_key("client.ts"));
@@ -112,10 +112,14 @@ fn test_sdk_only() {
 
     let mut schema = graphql::parse_graphql_sdl(sdl, "s.graphql").unwrap();
     let (ops, frags) = graphql::parse_graphql_operations(ops, "o.graphql").unwrap();
-    for op in ops { schema.add_operation(op); }
-    for frag in frags { schema.add_fragment(frag); }
+    for op in ops {
+        schema.add_operation(op);
+    }
+    for frag in frags {
+        schema.add_fragment(frag);
+    }
 
-    let output = generate::generate(&schema, &[Target::Sdk]);
+    let output = generate::generate(&schema, &[Target::Sdk], None);
 
     assert!(output.contains_key("client.ts"));
     assert!(!output.contains_key("hooks.ts"));
@@ -125,6 +129,10 @@ fn test_sdk_only() {
 #[test]
 fn test_empty_operations_no_output() {
     let schema = odk_schema::CompiledSchema::new("Empty");
-    let output = generate::generate(&schema, &[Target::Sdk, Target::ReactQuery, Target::Msw]);
+    let output = generate::generate(
+        &schema,
+        &[Target::Sdk, Target::ReactQuery, Target::Msw],
+        None,
+    );
     assert!(output.is_empty());
 }

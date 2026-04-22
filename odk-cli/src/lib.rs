@@ -1,6 +1,7 @@
 //! ODK CLI library
 //!
-//! Exposes loaders and bridge modules for integration testing.
+//! Exposes loaders, configuration, and generation modules.
 
+pub mod config;
 pub mod generate;
 pub mod loaders;
