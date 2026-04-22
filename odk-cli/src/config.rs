@@ -86,6 +86,48 @@ pub struct McpToolConfig {
 
     /// Human-readable description of what this tool does
     pub description: String,
+
+    /// Custom parameter definitions with dot-path mappings to GraphQL variables.
+    /// When present, the generator produces curated Zod schemas and a variable
+    /// builder instead of deriving schemas from the GraphQL operation variables.
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub parameters: Vec<McpToolParameter>,
+}
+
+/// A curated tool parameter that maps to a nested GraphQL variable path.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct McpToolParameter {
+    /// Parameter name exposed to the agent
+    pub name: String,
+
+    /// Base type: "string", "number", or "boolean"
+    #[serde(rename = "type")]
+    pub type_: String,
+
+    /// Optional format hint: "uuid", "datetime", "email"
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub format: Option<String>,
+
+    /// Enum values — when non-empty, generates z.enum([...]) instead of base type
+    #[serde(default, rename = "enum", skip_serializing_if = "Vec::is_empty")]
+    pub enum_values: Vec<String>,
+
+    /// Whether this parameter is required (default: false / optional)
+    #[serde(default)]
+    pub required: bool,
+
+    /// Default value for the parameter
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub default: Option<serde_json::Value>,
+
+    /// Human-readable description shown to the agent
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+
+    /// Dot-path into the GraphQL variables object (e.g. "condition.projectId",
+    /// "input.task.content", "filter.dueDate.lessThan")
+    #[serde(rename = "mapTo")]
+    pub map_to: String,
 }
 
 fn default_output() -> Utf8PathBuf {

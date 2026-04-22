@@ -287,11 +287,13 @@ mod tests {
                     operation: "GetUser".to_string(),
                     name: "get_user".to_string(),
                     description: "Get a user by ID".to_string(),
+                    parameters: vec![],
                 },
                 McpToolConfig {
                     operation: "CreatePost".to_string(),
                     name: "create_post".to_string(),
                     description: "Create a new post".to_string(),
+                    parameters: vec![],
                 },
             ],
         }
@@ -610,6 +612,7 @@ mod tests {
                 operation: "NonExistent".to_string(),
                 name: "bad_tool".to_string(),
                 description: "This should fail".to_string(),
+                parameters: vec![],
             }],
         };
         generate(&schema, &config);
