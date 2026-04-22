@@ -189,7 +189,7 @@ fn load_ts_config(path: &Utf8PathBuf) -> Result<OdkConfig> {
     );
 
     let output = Command::new("bun")
-        .args(["eval", &script])
+        .args(["--eval", &script])
         .output()
         .context("Failed to execute TypeScript config")?;
 
