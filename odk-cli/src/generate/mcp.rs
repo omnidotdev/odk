@@ -153,7 +153,7 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
     lines.push("    const url = new URL(req.url);".to_string());
     lines.push(format!("    if (url.pathname === \"{}\") {{", config.path));
     lines.push(
-        "      const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });"
+        "      const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });"
             .to_string(),
     );
     lines.push(format!(
