@@ -70,9 +70,25 @@ pub struct McpConfig {
     #[serde(default)]
     pub description: Option<String>,
 
+    /// HTTP port for the MCP server (default: 4001)
+    #[serde(default = "default_mcp_port")]
+    pub port: u16,
+
+    /// HTTP path for the MCP endpoint (default: "/mcp")
+    #[serde(default = "default_mcp_path")]
+    pub path: String,
+
     /// Tool definitions mapping GraphQL operations to MCP tools
     #[serde(default)]
     pub tools: Vec<McpToolConfig>,
+}
+
+fn default_mcp_port() -> u16 {
+    4001
+}
+
+fn default_mcp_path() -> String {
+    "/mcp".to_string()
 }
 
 /// A single MCP tool mapped from a GraphQL operation.

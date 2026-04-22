@@ -1,7 +1,7 @@
 //! MCP target — Model Context Protocol server.
 //!
 //! Generates a standalone MCP server that wraps GraphQL operations as
-//! tools, with Zod input schemas and STDIO transport.
+//! tools, with Zod input schemas and HTTP (Streamable HTTP) transport.
 
 use crate::config::{McpConfig, McpToolParameter};
 use odk_schema::{CompiledField, CompiledModel, CompiledSchema, CompiledType, ScalarType};
@@ -26,8 +26,7 @@ pub fn generate(schema: &CompiledSchema, config: &McpConfig) -> BTreeMap<String,
 fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
     let mut lines = vec![
         "import { McpServer } from \"@modelcontextprotocol/sdk/server/mcp.js\";".to_string(),
-        "import { StdioServerTransport } from \"@modelcontextprotocol/sdk/server/stdio.js\";"
-            .to_string(),
+        "import { WebStandardStreamableHTTPServerTransport } from \"@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js\";".to_string(),
         "import { z } from \"zod\";".to_string(),
         "import { GraphQLClient } from \"graphql-request\";".to_string(),
         String::new(),
@@ -69,26 +68,20 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
         lines.push(String::new());
     }
 
-    // Server setup
-    let description = config
-        .description
-        .as_deref()
-        .unwrap_or("Generated MCP server");
-
-    lines.push("const server = new McpServer({".to_string());
-    lines.push(format!("  name: \"{}\",", config.name));
-    lines.push(format!("  description: \"{}\",", escape_str(description)));
-    lines.push("  version: \"1.0.0\",".to_string());
-    lines.push("});".to_string());
-    lines.push(String::new());
-
     // GraphQL client
     lines.push("const graphql = new GraphQLClient(".to_string());
     lines.push("  process.env.GRAPHQL_ENDPOINT ?? \"http://localhost:4000/graphql\"".to_string());
     lines.push(");".to_string());
     lines.push(String::new());
 
-    // Tool registrations
+    // Tool registration function
+    let description = config
+        .description
+        .as_deref()
+        .unwrap_or("Generated MCP server");
+
+    lines.push("function registerTools(server: McpServer) {".to_string());
+
     for tool_cfg in &config.tools {
         let op = schema
             .operations
@@ -98,60 +91,90 @@ fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
 
         let doc_name = format!("{}Document", op.name);
 
-        lines.push("server.tool(".to_string());
-        lines.push(format!("  \"{}\",", tool_cfg.name));
-        lines.push(format!("  \"{}\",", escape_str(&tool_cfg.description)));
+        lines.push("  server.tool(".to_string());
+        lines.push(format!("    \"{}\",", tool_cfg.name));
+        lines.push(format!("    \"{}\",", escape_str(&tool_cfg.description)));
 
         if tool_cfg.parameters.is_empty() {
-            // Existing path: derive schema from GraphQL variables
             let zod_schema = build_zod_schema_for_variables(&op.variables, &schema.models);
-            lines.push(format!("  {{{}}},", zod_schema));
+            lines.push(format!("    {{{}}},", zod_schema));
 
             if op.variables.is_empty() {
-                lines.push("  async () => {".to_string());
+                lines.push("    async () => {".to_string());
                 lines.push(format!(
-                    "    const data = await graphql.request({});",
+                    "      const data = await graphql.request({});",
                     doc_name
                 ));
             } else {
                 let var_names: Vec<&str> = op.variables.iter().map(|v| v.name.as_str()).collect();
                 let destructure = var_names.join(", ");
-                lines.push(format!("  async ({{ {} }}) => {{", destructure));
+                lines.push(format!("    async ({{ {} }}) => {{", destructure));
                 lines.push(format!(
-                    "    const data = await graphql.request({}, {{ {} }});",
+                    "      const data = await graphql.request({}, {{ {} }});",
                     doc_name, destructure
                 ));
             }
         } else {
-            // Custom path: curated parameters with mapTo variable builder
             let zod_schema = build_zod_schema_for_params(&tool_cfg.parameters);
-            lines.push(format!("  {{{}}},", zod_schema));
-            lines.push("  async (params) => {".to_string());
-            lines.push("    const variables: Record<string, unknown> = {};".to_string());
+            lines.push(format!("    {{{}}},", zod_schema));
+            lines.push("    async (params) => {".to_string());
+            lines.push("      const variables: Record<string, unknown> = {};".to_string());
             for param in &tool_cfg.parameters {
                 lines.push(format!(
-                    "    if (params.{} !== undefined) set(variables, \"{}\", params.{});",
+                    "      if (params.{} !== undefined) set(variables, \"{}\", params.{});",
                     param.name, param.map_to, param.name
                 ));
             }
             lines.push(format!(
-                "    const data = await graphql.request({}, variables);",
+                "      const data = await graphql.request({}, variables);",
                 doc_name
             ));
         }
 
         lines.push(
-            "    return { content: [{ type: \"text\", text: JSON.stringify(data, null, 2) }] };"
+            "      return { content: [{ type: \"text\", text: JSON.stringify(data, null, 2) }] };"
                 .to_string(),
         );
-        lines.push("  }".to_string());
-        lines.push(");".to_string());
+        lines.push("    }".to_string());
+        lines.push("  );".to_string());
         lines.push(String::new());
     }
 
-    // Start transport
-    lines.push("const transport = new StdioServerTransport();".to_string());
-    lines.push("await server.connect(transport);".to_string());
+    lines.push("}".to_string());
+    lines.push(String::new());
+
+    // HTTP server
+    lines.push("const app = Bun.serve({".to_string());
+    lines.push(format!(
+        "  port: Number(process.env.MCP_PORT ?? {}),",
+        config.port
+    ));
+    lines.push("  async fetch(req) {".to_string());
+    lines.push("    const url = new URL(req.url);".to_string());
+    lines.push(format!("    if (url.pathname === \"{}\") {{", config.path));
+    lines.push(
+        "      const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });"
+            .to_string(),
+    );
+    lines.push(format!(
+        "      const server = new McpServer({{ name: \"{}\", description: \"{}\", version: \"1.0.0\" }});",
+        config.name, escape_str(description)
+    ));
+    lines.push("      registerTools(server);".to_string());
+    lines.push("      await server.connect(transport);".to_string());
+    lines.push("      const response = await transport.handleRequest(req);".to_string());
+    lines.push("      await transport.close();".to_string());
+    lines.push("      await server.close();".to_string());
+    lines.push("      return response;".to_string());
+    lines.push("    }".to_string());
+    lines.push("    return new Response(\"Not Found\", { status: 404 });".to_string());
+    lines.push("  },".to_string());
+    lines.push("});".to_string());
+    lines.push(String::new());
+    lines.push(format!(
+        "console.error(`{} listening on port ${{app.port}}`);",
+        config.name
+    ));
 
     lines.join("\n")
 }
@@ -385,6 +408,8 @@ mod tests {
         McpConfig {
             name: "test-mcp".to_string(),
             description: Some("Test MCP server".to_string()),
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![
                 McpToolConfig {
                     operation: "GetUser".to_string(),
@@ -520,6 +545,8 @@ mod tests {
         let config = McpConfig {
             name: "empty".to_string(),
             description: None,
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![],
         };
         let output = generate(&schema, &config);
@@ -533,9 +560,10 @@ mod tests {
         let output = generate(&schema, &config);
         let server = &output["server.ts"];
         assert!(server.contains("@modelcontextprotocol/sdk/server/mcp.js"));
-        assert!(server.contains("@modelcontextprotocol/sdk/server/stdio.js"));
+        assert!(server.contains("@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js"));
         assert!(server.contains("import { z } from \"zod\""));
         assert!(server.contains("import { GraphQLClient } from \"graphql-request\""));
+        assert!(!server.contains("stdio"));
     }
 
     #[test]
@@ -574,13 +602,25 @@ mod tests {
     }
 
     #[test]
-    fn test_server_has_transport_startup() {
+    fn test_server_has_http_transport() {
         let schema = test_schema();
         let config = test_config();
         let output = generate(&schema, &config);
         let server = &output["server.ts"];
-        assert!(server.contains("new StdioServerTransport()"));
-        assert!(server.contains("await server.connect(transport)"));
+        assert!(server.contains("Bun.serve("));
+        assert!(server.contains("WebStandardStreamableHTTPServerTransport"));
+        assert!(server.contains("registerTools(server)"));
+        assert!(server.contains("transport.handleRequest(req)"));
+        assert!(server.contains("url.pathname === \"/mcp\""));
+    }
+
+    #[test]
+    fn test_server_has_register_tools_function() {
+        let schema = test_schema();
+        let config = test_config();
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        assert!(server.contains("function registerTools(server: McpServer)"));
     }
 
     #[test]
@@ -711,6 +751,8 @@ mod tests {
         let config = McpConfig {
             name: "test".to_string(),
             description: None,
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![McpToolConfig {
                 operation: "NonExistent".to_string(),
                 name: "bad_tool".to_string(),
@@ -842,6 +884,8 @@ mod tests {
         let config = McpConfig {
             name: "test".to_string(),
             description: None,
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![McpToolConfig {
                 operation: "tasks".to_string(),
                 name: "list_tasks".to_string(),
@@ -881,6 +925,8 @@ mod tests {
         let config = McpConfig {
             name: "test".to_string(),
             description: None,
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![McpToolConfig {
                 operation: "tasks".to_string(),
                 name: "list_tasks".to_string(),
@@ -954,6 +1000,8 @@ mod tests {
         let config = McpConfig {
             name: "mixed".to_string(),
             description: None,
+            port: 4001,
+            path: "/mcp".to_string(),
             tools: vec![
                 // No parameters — uses existing path
                 McpToolConfig {
