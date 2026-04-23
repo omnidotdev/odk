@@ -7,7 +7,7 @@ use apollo_parser::Parser;
 use apollo_parser::cst::CstNode;
 use odk_schema::{
     CompiledField, CompiledModel, CompiledOperation, CompiledSchema, CompiledType, CompiledUnion,
-    CompiledUnionVariant, Directive, Extensions, FieldSelection, FragmentDefinition,
+    CompiledUnionVariant, Directive, Extensions, FieldArgument, FieldSelection, FragmentDefinition,
     FragmentSpread, InlineFragment, LiteralValue, OperationKind, ScalarType, SelectionSet,
     Variable,
 };
@@ -619,20 +619,20 @@ fn convert_selection_set(sel_set: &apollo_parser::cst::SelectionSet) -> Selectio
                     .alias()
                     .and_then(|a| a.name().map(|n| n.text().to_string()));
 
-                let arguments: Vec<(String, CompiledType)> = field
+                let arguments: Vec<FieldArgument> = field
                     .arguments()
                     .map(|args| {
                         args.arguments()
                             .filter_map(|arg| {
                                 let arg_name = arg.name().map(|n| n.text().to_string())?;
-                                // Argument values in selection sets reference variables
-                                // or are literals; store as Unknown type placeholder
-                                Some((
-                                    arg_name,
-                                    CompiledType::Scalar {
+                                let raw_value = arg.value().map(|v| v.source_string().to_string());
+                                Some(FieldArgument {
+                                    name: arg_name,
+                                    arg_type: CompiledType::Scalar {
                                         name: ScalarType::Unknown,
                                     },
-                                ))
+                                    raw_value,
+                                })
                             })
                             .collect()
                     })

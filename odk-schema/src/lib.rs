@@ -119,6 +119,19 @@ pub struct SelectionSet {
     pub inline_fragments: Vec<InlineFragment>,
 }
 
+/// A single argument on a field selection.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct FieldArgument {
+    /// Argument name
+    pub name: String,
+    /// Compiled type (used for variable-type resolution in some generators)
+    pub arg_type: CompiledType,
+    /// Raw source text of the value (e.g. "$id", "[INDEX_ASC]", "true").
+    /// When present, emitted verbatim during operation reconstruction.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub raw_value: Option<String>,
+}
+
 /// A single field selection within a selection set.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct FieldSelection {
@@ -129,7 +142,7 @@ pub struct FieldSelection {
     pub alias: Option<String>,
     /// Arguments passed to this field
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub arguments: Vec<(String, CompiledType)>,
+    pub arguments: Vec<FieldArgument>,
     /// Nested selection set
     #[serde(skip_serializing_if = "Option::is_none")]
     pub selection: Option<SelectionSet>,
@@ -655,12 +668,13 @@ mod tests {
                     FieldSelection {
                         name: "posts".to_string(),
                         alias: None,
-                        arguments: vec![(
-                            "first".to_string(),
-                            CompiledType::Scalar {
+                        arguments: vec![FieldArgument {
+                            name: "first".to_string(),
+                            arg_type: CompiledType::Scalar {
                                 name: ScalarType::Int32,
                             },
-                        )],
+                            raw_value: Some("$first".to_string()),
+                        }],
                         selection: Some(SelectionSet {
                             fields: vec![FieldSelection {
                                 name: "title".to_string(),

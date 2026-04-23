@@ -210,7 +210,10 @@ fn emit_selection_set(lines: &mut Vec<String>, sel: &SelectionSet, indent: usize
             let arg_strs: Vec<String> = field
                 .arguments
                 .iter()
-                .map(|(name, _)| format!("{}: ${}", name, name))
+                .map(|arg| match &arg.raw_value {
+                    Some(raw) => format!("{}: {}", arg.name, raw),
+                    None => format!("{}: ${}", arg.name, arg.name),
+                })
                 .collect();
             format!("({})", arg_strs.join(", "))
         };
@@ -269,7 +272,8 @@ fn collect_fragment_refs_inner<'a>(sel: &'a SelectionSet, refs: &mut Vec<&'a str
 mod tests {
     use super::*;
     use odk_schema::{
-        CompiledType, FieldSelection, FragmentDefinition, ScalarType, SelectionSet, Variable,
+        CompiledType, FieldArgument, FieldSelection, FragmentDefinition, ScalarType, SelectionSet,
+        Variable,
     };
 
     #[test]
@@ -508,6 +512,100 @@ mod tests {
 
         assert!(result.contains("...UserFields"));
         assert!(result.contains("fragment UserFields on User"));
+    }
+
+    #[test]
+    fn test_reconstruct_preserves_literal_arguments() {
+        let selection = Some(SelectionSet {
+            fields: vec![FieldSelection {
+                name: "columns".into(),
+                alias: None,
+                arguments: vec![
+                    FieldArgument {
+                        name: "condition".into(),
+                        arg_type: CompiledType::Scalar {
+                            name: ScalarType::Unknown,
+                        },
+                        raw_value: Some("$condition".into()),
+                    },
+                    FieldArgument {
+                        name: "orderBy".into(),
+                        arg_type: CompiledType::Scalar {
+                            name: ScalarType::Unknown,
+                        },
+                        raw_value: Some("[INDEX_ASC]".into()),
+                    },
+                ],
+                selection: Some(SelectionSet {
+                    fields: vec![FieldSelection {
+                        name: "nodes".into(),
+                        alias: None,
+                        arguments: vec![],
+                        selection: None,
+                        directives: vec![],
+                    }],
+                    fragment_spreads: vec![],
+                    inline_fragments: vec![],
+                }),
+                directives: vec![],
+            }],
+            fragment_spreads: vec![],
+            inline_fragments: vec![],
+        });
+
+        let vars = vec![Variable {
+            name: "condition".into(),
+            variable_type: CompiledType::Ref {
+                name: "ColumnCondition".into(),
+            },
+            required: false,
+            default_value: None,
+            description: None,
+        }];
+
+        let result =
+            reconstruct_operation("columns", &OperationKind::Query, &vars, &selection, &[]);
+
+        assert!(
+            result.contains("condition: $condition"),
+            "Variable reference should use $ syntax"
+        );
+        assert!(
+            result.contains("orderBy: [INDEX_ASC]"),
+            "Literal argument should be preserved verbatim"
+        );
+        assert!(
+            !result.contains("$orderBy"),
+            "Literal should not be turned into a variable reference"
+        );
+    }
+
+    #[test]
+    fn test_reconstruct_falls_back_to_variable_ref_without_raw_value() {
+        let selection = Some(SelectionSet {
+            fields: vec![FieldSelection {
+                name: "user".into(),
+                alias: None,
+                arguments: vec![FieldArgument {
+                    name: "id".into(),
+                    arg_type: CompiledType::Scalar {
+                        name: ScalarType::Unknown,
+                    },
+                    raw_value: None,
+                }],
+                selection: None,
+                directives: vec![],
+            }],
+            fragment_spreads: vec![],
+            inline_fragments: vec![],
+        });
+
+        let result = reconstruct_operation("getUser", &OperationKind::Query, &[], &selection, &[]);
+
+        assert!(
+            result.contains("user(id: $id)"),
+            "Should fall back to variable reference when raw_value is None"
+        );
     }
 
     #[test]
