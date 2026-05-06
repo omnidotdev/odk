@@ -222,6 +222,7 @@ fn test_mcp_generate_pipeline() {
                     parameters: vec![],
                 },
             ],
+            forward_headers: vec![],
         }),
     };
 
@@ -338,6 +339,7 @@ fn test_mcp_curated_parameters_pipeline() {
                     map_to: "condition.projectId".into(),
                 }],
             }],
+            forward_headers: vec![],
         }),
     };
 

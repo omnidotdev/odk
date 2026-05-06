@@ -80,7 +80,33 @@ fn generate_server(schema: &CompiledSchema, config: &McpGenerateConfig) -> Strin
         .as_deref()
         .unwrap_or("Generated MCP server");
 
-    lines.push("function registerTools(server: McpServer) {".to_string());
+    let forward_auth = !config.forward_headers.is_empty();
+    let headers_arg = if forward_auth { ", requestHeaders" } else { "" };
+    let headers_arg_no_vars = if forward_auth {
+        ", undefined, requestHeaders"
+    } else {
+        ""
+    };
+
+    if forward_auth {
+        lines.push("function registerTools(server: McpServer, req: Request) {".to_string());
+        let header_names: Vec<String> = config
+            .forward_headers
+            .iter()
+            .map(|h| format!("\"{}\"", h.to_lowercase()))
+            .collect();
+        lines.push("  const requestHeaders: Record<string, string> = {};".to_string());
+        lines.push(format!(
+            "  for (const name of [{}]) {{",
+            header_names.join(", ")
+        ));
+        lines.push("    const value = req.headers.get(name);".to_string());
+        lines.push("    if (value !== null) requestHeaders[name] = value;".to_string());
+        lines.push("  }".to_string());
+        lines.push(String::new());
+    } else {
+        lines.push("function registerTools(server: McpServer) {".to_string());
+    }
 
     for tool_cfg in &config.tools {
         let op = schema
@@ -102,16 +128,16 @@ fn generate_server(schema: &CompiledSchema, config: &McpGenerateConfig) -> Strin
             if op.variables.is_empty() {
                 lines.push("    async () => {".to_string());
                 lines.push(format!(
-                    "      const data = await graphql.request({});",
-                    doc_name
+                    "      const data = await graphql.request({}{});",
+                    doc_name, headers_arg_no_vars
                 ));
             } else {
                 let var_names: Vec<&str> = op.variables.iter().map(|v| v.name.as_str()).collect();
                 let destructure = var_names.join(", ");
                 lines.push(format!("    async ({{ {} }}) => {{", destructure));
                 lines.push(format!(
-                    "      const data = await graphql.request({}, {{ {} }});",
-                    doc_name, destructure
+                    "      const data = await graphql.request({}, {{ {} }}{});",
+                    doc_name, destructure, headers_arg
                 ));
             }
         } else {
@@ -126,8 +152,8 @@ fn generate_server(schema: &CompiledSchema, config: &McpGenerateConfig) -> Strin
                 ));
             }
             lines.push(format!(
-                "      const data = await graphql.request({}, variables);",
-                doc_name
+                "      const data = await graphql.request({}, variables{});",
+                doc_name, headers_arg
             ));
         }
 
@@ -160,7 +186,11 @@ fn generate_server(schema: &CompiledSchema, config: &McpGenerateConfig) -> Strin
         "      const server = new McpServer({{ name: \"{}\", description: \"{}\", version: \"1.0.0\" }});",
         config.name, escape_str(description)
     ));
-    lines.push("      registerTools(server);".to_string());
+    if forward_auth {
+        lines.push("      registerTools(server, req);".to_string());
+    } else {
+        lines.push("      registerTools(server);".to_string());
+    }
     lines.push("      await server.connect(transport);".to_string());
     lines.push("      const response = await transport.handleRequest(req);".to_string());
     lines.push("      await transport.close();".to_string());
@@ -424,6 +454,7 @@ mod tests {
                     parameters: vec![],
                 },
             ],
+            forward_headers: vec![],
         }
     }
 
@@ -548,6 +579,7 @@ mod tests {
             port: 4001,
             path: "/mcp".to_string(),
             tools: vec![],
+            forward_headers: vec![],
         };
         let output = generate(&schema, &config);
         assert!(output.is_empty());
@@ -621,6 +653,50 @@ mod tests {
         let output = generate(&schema, &config);
         let server = &output["server.ts"];
         assert!(server.contains("function registerTools(server: McpServer)"));
+    }
+
+    #[test]
+    fn test_default_emit_does_not_forward_headers() {
+        let schema = test_schema();
+        let config = test_config();
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        assert!(!server.contains("requestHeaders"));
+        assert!(!server.contains("registerTools(server, req)"));
+        assert!(server.contains("registerTools(server)"));
+    }
+
+    #[test]
+    fn test_forward_headers_threads_through_request_calls() {
+        let schema = test_schema();
+        let mut config = test_config();
+        config.forward_headers = vec!["authorization".to_string()];
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+
+        // registerTools accepts req and is called with it
+        assert!(server.contains("function registerTools(server: McpServer, req: Request)"));
+        assert!(server.contains("registerTools(server, req)"));
+
+        // Builds requestHeaders from listed names
+        assert!(server.contains("const requestHeaders: Record<string, string> = {};"));
+        assert!(server.contains("for (const name of [\"authorization\"]) {"));
+        assert!(server.contains("const value = req.headers.get(name);"));
+
+        // Both auto-vars and (when present) curated tool calls thread requestHeaders through
+        assert!(server.contains(", { id }, requestHeaders)"));
+        assert!(server.contains(", { input }, requestHeaders)"));
+    }
+
+    #[test]
+    fn test_forward_headers_lowercase_normalization() {
+        let schema = test_schema();
+        let mut config = test_config();
+        config.forward_headers = vec!["Authorization".to_string(), "X-Trace-Id".to_string()];
+        let output = generate(&schema, &config);
+        let server = &output["server.ts"];
+        // Header names are normalized to lowercase for case-insensitive matching
+        assert!(server.contains("[\"authorization\", \"x-trace-id\"]"));
     }
 
     #[test]
@@ -759,6 +835,7 @@ mod tests {
                 description: "This should fail".to_string(),
                 parameters: vec![],
             }],
+            forward_headers: vec![],
         };
         generate(&schema, &config);
     }
@@ -895,6 +972,7 @@ mod tests {
                     test_param("priority", "string", "condition.priority"),
                 ],
             }],
+            forward_headers: vec![],
         };
 
         let output = generate(&schema, &config);
@@ -933,6 +1011,7 @@ mod tests {
                 description: "List".to_string(),
                 parameters: vec![test_param("x", "string", "a.b")],
             }],
+            forward_headers: vec![],
         };
 
         let output = generate(&schema, &config);
@@ -1018,6 +1097,7 @@ mod tests {
                     parameters: vec![test_param("projectId", "string", "condition.projectId")],
                 },
             ],
+            forward_headers: vec![],
         };
 
         let output = generate(&schema, &config);

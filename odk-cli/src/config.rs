@@ -81,6 +81,13 @@ pub struct McpGenerateConfig {
     /// Tools to expose (curated subset of GraphQL operations)
     #[serde(default)]
     pub tools: Vec<McpToolConfig>,
+
+    /// Inbound HTTP headers to forward verbatim to the underlying GraphQL request.
+    /// Used to propagate authentication and observability context (e.g. an OIDC
+    /// bearer token presented by an MCP client) without baking secrets into the
+    /// generated server. When empty, no headers are forwarded.
+    #[serde(default, rename = "forwardHeaders")]
+    pub forward_headers: Vec<String>,
 }
 
 fn default_mcp_port() -> u16 {
