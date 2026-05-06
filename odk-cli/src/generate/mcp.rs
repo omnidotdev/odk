@@ -3,14 +3,14 @@
 //! Generates a standalone MCP server that wraps GraphQL operations as
 //! tools, with Zod input schemas and HTTP (Streamable HTTP) transport.
 
-use crate::config::{McpConfig, McpToolParameter};
+use crate::config::{McpGenerateConfig, McpToolParameter};
 use odk_schema::{CompiledField, CompiledModel, CompiledSchema, CompiledType, ScalarType};
 use std::collections::BTreeMap;
 
 use super::util;
 
 /// Generate the MCP server artifacts.
-pub fn generate(schema: &CompiledSchema, config: &McpConfig) -> BTreeMap<String, String> {
+pub fn generate(schema: &CompiledSchema, config: &McpGenerateConfig) -> BTreeMap<String, String> {
     let mut output = BTreeMap::new();
 
     if config.tools.is_empty() {
@@ -23,7 +23,7 @@ pub fn generate(schema: &CompiledSchema, config: &McpConfig) -> BTreeMap<String,
     output
 }
 
-fn generate_server(schema: &CompiledSchema, config: &McpConfig) -> String {
+fn generate_server(schema: &CompiledSchema, config: &McpGenerateConfig) -> String {
     let mut lines = vec![
         "import { McpServer } from \"@modelcontextprotocol/sdk/server/mcp.js\";".to_string(),
         "import { WebStandardStreamableHTTPServerTransport } from \"@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js\";".to_string(),
@@ -290,7 +290,7 @@ fn object_fields_to_zod(fields: &[CompiledField], models: &[CompiledModel]) -> S
 }
 
 /// Check if any tool uses custom parameters (needs the set() helper).
-fn needs_set_helper(config: &McpConfig) -> bool {
+fn needs_set_helper(config: &McpGenerateConfig) -> bool {
     config.tools.iter().any(|t| !t.parameters.is_empty())
 }
 
@@ -366,7 +366,7 @@ fn param_to_zod(param: &McpToolParameter) -> String {
     zod
 }
 
-fn generate_package_json(config: &McpConfig) -> String {
+fn generate_package_json(config: &McpGenerateConfig) -> String {
     let description = config
         .description
         .as_deref()
@@ -401,11 +401,11 @@ fn escape_str(s: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::config::{McpConfig, McpToolConfig};
+    use crate::config::{McpGenerateConfig, McpToolConfig};
     use odk_schema::*;
 
-    fn test_config() -> McpConfig {
-        McpConfig {
+    fn test_config() -> McpGenerateConfig {
+        McpGenerateConfig {
             name: "test-mcp".to_string(),
             description: Some("Test MCP server".to_string()),
             port: 4001,
@@ -542,7 +542,7 @@ mod tests {
     #[test]
     fn test_empty_tools_no_output() {
         let schema = test_schema();
-        let config = McpConfig {
+        let config = McpGenerateConfig {
             name: "empty".to_string(),
             description: None,
             port: 4001,
@@ -748,7 +748,7 @@ mod tests {
     #[should_panic(expected = "references operation 'NonExistent' which was not found")]
     fn test_missing_operation_panics() {
         let schema = test_schema();
-        let config = McpConfig {
+        let config = McpGenerateConfig {
             name: "test".to_string(),
             description: None,
             port: 4001,
@@ -881,7 +881,7 @@ mod tests {
             directives: vec![],
         });
 
-        let config = McpConfig {
+        let config = McpGenerateConfig {
             name: "test".to_string(),
             description: None,
             port: 4001,
@@ -922,7 +922,7 @@ mod tests {
             directives: vec![],
         });
 
-        let config = McpConfig {
+        let config = McpGenerateConfig {
             name: "test".to_string(),
             description: None,
             port: 4001,
@@ -997,7 +997,7 @@ mod tests {
             directives: vec![],
         });
 
-        let config = McpConfig {
+        let config = McpGenerateConfig {
             name: "mixed".to_string(),
             description: None,
             port: 4001,

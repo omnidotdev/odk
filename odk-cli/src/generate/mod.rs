@@ -76,7 +76,7 @@ impl fmt::Display for Target {
 ///
 /// Returns a map of relative file paths to their contents.
 /// The `sdk` target is always included if `react-query` or `msw` is requested.
-/// The `mcp` target requires an `McpConfig` block in the generate config.
+/// The `mcp` target requires an `McpGenerateConfig` block in the generate config.
 pub fn generate(
     schema: &CompiledSchema,
     targets: &[Target],

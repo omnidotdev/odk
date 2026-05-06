@@ -57,16 +57,16 @@ pub struct GenerateConfig {
 
     /// MCP target-specific configuration
     #[serde(skip_serializing_if = "Option::is_none")]
-    pub mcp: Option<McpConfig>,
+    pub mcp: Option<McpGenerateConfig>,
 }
 
 /// MCP server generation configuration.
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
-pub struct McpConfig {
-    /// Server name for the MCP manifest
+pub struct McpGenerateConfig {
+    /// MCP server name (used in package.json and server metadata)
     pub name: String,
 
-    /// Server description
+    /// Human-readable description of the MCP server
     #[serde(default)]
     pub description: Option<String>,
 
@@ -78,7 +78,7 @@ pub struct McpConfig {
     #[serde(default = "default_mcp_path")]
     pub path: String,
 
-    /// Tool definitions mapping GraphQL operations to MCP tools
+    /// Tools to expose (curated subset of GraphQL operations)
     #[serde(default)]
     pub tools: Vec<McpToolConfig>,
 }
@@ -356,5 +356,43 @@ mod tests {
         let stripped = strip_json_comments(input);
         let parsed: serde_json::Value = serde_json::from_str(&stripped).unwrap();
         assert_eq!(parsed["url"], "https://example.com/path");
+    }
+
+    #[test]
+    fn test_mcp_config_deserialization() {
+        let json = r#"{
+            "schema": "schema.graphql",
+            "generate": {
+                "targets": ["mcp"],
+                "mcp": {
+                    "name": "backfeed-mcp",
+                    "description": "Backfeed feedback tools",
+                    "tools": [
+                        {
+                            "operation": "createPost",
+                            "name": "submit_feedback",
+                            "description": "Submit feedback to a board"
+                        },
+                        {
+                            "operation": "posts",
+                            "name": "list_posts",
+                            "description": "List posts"
+                        }
+                    ]
+                }
+            }
+        }"#;
+
+        let config: OdkConfig = serde_json::from_str(json).unwrap();
+        let generate = config.generate.unwrap();
+        let mcp = generate.mcp.unwrap();
+        assert_eq!(mcp.name, "backfeed-mcp");
+        assert_eq!(mcp.description.as_deref(), Some("Backfeed feedback tools"));
+        assert_eq!(mcp.port, 4001);
+        assert_eq!(mcp.path, "/mcp");
+        assert_eq!(mcp.tools.len(), 2);
+        assert_eq!(mcp.tools[0].operation, "createPost");
+        assert_eq!(mcp.tools[0].name, "submit_feedback");
+        assert_eq!(mcp.tools[1].name, "list_posts");
     }
 }
