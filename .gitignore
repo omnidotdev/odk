@@ -29,6 +29,11 @@ schema-test*.json
 *.swp
 *.swo
 
+# tooling
+.claude/
+CLAUDE.md
+AGENTS.md
+
 # OS
 .DS_Store
 Thumbs.db
