@@ -194,9 +194,15 @@ fn compiled_type_to_zod(t: &CompiledType) -> String {
         CompiledType::Array { items } => {
             format!("z.array({})", compiled_type_to_zod(items))
         }
-        CompiledType::Ref { name } => {
-            format!("z.object({{}}).passthrough().describe(\"{}\")", escape_str(name))
-        }
+        CompiledType::Ref { name } => match name.as_str() {
+            // Well-known custom scalars are string-encoded over the wire, so a
+            // tool arg should be a plain string, not an opaque object. Only the
+            // zod input schema is affected; the embedded GraphQL operation
+            // document still uses the original scalar type name (e.g. UUID).
+            "UUID" | "Cursor" | "Datetime" | "DateTime" => "z.string()".to_string(),
+            // Input object types (and anything else) stay passthrough objects.
+            _ => format!("z.object({{}}).passthrough().describe(\"{}\")", escape_str(name)),
+        },
         CompiledType::Union { variants } => {
             let parts: Vec<String> = variants.iter().map(compiled_type_to_zod).collect();
             format!("z.union([{}])", parts.join(", "))
