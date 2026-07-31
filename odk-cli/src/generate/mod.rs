@@ -5,6 +5,7 @@
 
 pub mod mcp;
 pub mod msw;
+pub mod python;
 pub mod react_query;
 pub mod sdk;
 pub mod util;
@@ -21,6 +22,7 @@ pub enum Target {
     ReactQuery,
     Msw,
     Mcp,
+    Python,
 }
 
 impl Target {
@@ -31,6 +33,7 @@ impl Target {
             "react-query" | "reactquery" => Some(Target::ReactQuery),
             "msw" => Some(Target::Msw),
             "mcp" => Some(Target::Mcp),
+            "python" | "py" => Some(Target::Python),
             _ => None,
         }
     }
@@ -49,7 +52,7 @@ impl Target {
                         targets.push(t);
                     }
                 }
-                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp", trimmed)),
+                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python", trimmed)),
             }
         }
         Ok(targets)
@@ -63,6 +66,7 @@ impl fmt::Display for Target {
             Target::ReactQuery => write!(f, "react-query"),
             Target::Msw => write!(f, "msw"),
             Target::Mcp => write!(f, "mcp"),
+            Target::Python => write!(f, "python"),
         }
     }
 }
@@ -93,6 +97,10 @@ pub fn generate(
 
     if targets.contains(&Target::Msw) {
         output.extend(msw::generate(schema));
+    }
+
+    if targets.contains(&Target::Python) {
+        output.extend(python::generate(schema));
     }
 
     if targets.contains(&Target::Mcp) {
