@@ -689,7 +689,7 @@ fn cmd_generate(
         .map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
-        bail!("No targets specified. Available: sdk, react-query, msw, mcp");
+        bail!("No targets specified. Available: sdk, react-query, msw, mcp, python");
     }
 
     // Load schema
@@ -717,18 +717,26 @@ fn cmd_generate(
         }
     }
 
-    if schema.operations.is_empty() {
+    // The client targets are built from operations; model generators are built
+    // from types and are legitimately operation-free
+    let needs_operations = targets.iter().any(|t| *t != Target::Python);
+
+    if needs_operations && schema.operations.is_empty() {
         bail!(
             "No operations found. Provide operation documents via --operations \
              or include them in the schema file."
         );
     }
 
-    eprintln!(
-        "  {} operations, {} fragments",
-        schema.operations.len(),
-        schema.fragments.len()
-    );
+    if schema.operations.is_empty() {
+        eprintln!("  {} models, {} unions", schema.models.len(), schema.unions.len());
+    } else {
+        eprintln!(
+            "  {} operations, {} fragments",
+            schema.operations.len(),
+            schema.fragments.len()
+        );
+    }
 
     // Generate
     let target_names: Vec<String> = targets.iter().map(|t| t.to_string()).collect();
