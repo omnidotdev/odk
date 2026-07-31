@@ -206,8 +206,19 @@ fn load_schema(input: &Utf8PathBuf) -> Result<CompiledSchema> {
             extism_host::load_schema_from_plugin(input)
         }
         "json" => {
-            // JSON schema file - try ODK YAML format first, then raw CompiledSchema
             let path = std::path::Path::new(input.as_str());
+
+            // A standard JSON Schema document (schemars output, for example) is
+            // a different thing from ODK's own JSON format, so it is detected
+            // before the ODK parsers get a chance to half-read it
+            let content =
+                fs::read_to_string(input).with_context(|| format!("Failed to read {}", input))?;
+            if loaders::is_json_schema(&content) {
+                return loaders::load_json_schema(path)
+                    .map_err(|e| anyhow::anyhow!("Failed to load JSON Schema: {}", e));
+            }
+
+            // ODK JSON: try the YAML-format parser first, then raw CompiledSchema
             match loaders::load_yaml_schema(path) {
                 Ok(schema) => Ok(schema),
                 Err(_) => {
