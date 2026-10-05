@@ -119,7 +119,7 @@ enum Commands {
         out: Utf8PathBuf,
 
         /// Generation targets (comma-separated)
-        /// Available: sdk, react-query, msw, mcp, python, typescript
+        /// Available: sdk, react-query, msw, mcp, python, typescript, rust
         /// Default: sdk,react-query,msw
         #[arg(short, long, default_value = "sdk,react-query,msw")]
         targets: String,
@@ -689,7 +689,7 @@ fn cmd_generate(
         .map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
-        bail!("No targets specified. Available: sdk, react-query, msw, mcp, python, typescript");
+        bail!("No targets specified. Available: sdk, react-query, msw, mcp, python, typescript, rust");
     }
 
     // Load schema
@@ -721,7 +721,7 @@ fn cmd_generate(
     // from types and are legitimately operation-free
     let needs_operations = targets
         .iter()
-        .any(|t| *t != Target::Python && *t != Target::Typescript);
+        .any(|t| *t != Target::Python && *t != Target::Typescript && *t != Target::Rust);
 
     if needs_operations && schema.operations.is_empty() {
         bail!(

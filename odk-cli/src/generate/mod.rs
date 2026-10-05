@@ -7,6 +7,7 @@ pub mod mcp;
 pub mod msw;
 pub mod python;
 pub mod react_query;
+pub mod rust;
 pub mod sdk;
 pub mod typescript;
 pub mod util;
@@ -25,6 +26,7 @@ pub enum Target {
     Mcp,
     Python,
     Typescript,
+    Rust,
 }
 
 impl Target {
@@ -37,6 +39,7 @@ impl Target {
             "mcp" => Some(Target::Mcp),
             "python" | "py" => Some(Target::Python),
             "typescript" | "ts" => Some(Target::Typescript),
+            "rust" | "rs" => Some(Target::Rust),
             _ => None,
         }
     }
@@ -55,7 +58,7 @@ impl Target {
                         targets.push(t);
                     }
                 }
-                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python, typescript", trimmed)),
+                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python, typescript, rust", trimmed)),
             }
         }
         Ok(targets)
@@ -71,6 +74,7 @@ impl fmt::Display for Target {
             Target::Mcp => write!(f, "mcp"),
             Target::Python => write!(f, "python"),
             Target::Typescript => write!(f, "typescript"),
+            Target::Rust => write!(f, "rust"),
         }
     }
 }
@@ -109,6 +113,10 @@ pub fn generate(
 
     if targets.contains(&Target::Typescript) {
         output.extend(typescript::generate(schema));
+    }
+
+    if targets.contains(&Target::Rust) {
+        output.extend(rust::generate(schema));
     }
 
     if targets.contains(&Target::Mcp) {
