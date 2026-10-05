@@ -114,6 +114,22 @@ pip install odk-pdk
 
 Default (no `-e` flag): `@typespec/json-schema` + `@typespec/openapi3`
 
+## Generate Models
+
+`odk generate` emits plain model types from a schema (including a standard JSON Schema document). These targets are model-only: they build from the schema's types and need no GraphQL operations.
+
+| Target              | Output      | Flag            |
+| ------------------- | ----------- | --------------- |
+| `python` (`py`)     | `models.py` | `-t python`     |
+| `typescript` (`ts`) | `models.ts` | `-t typescript` |
+| `rust` (`rs`)       | `models.rs` | `-t rust`       |
+
+Combine targets to emit several languages in one run:
+
+```sh
+odk generate schema.json -t python,typescript,rust -o generated/
+```
+
 ## CLI Reference
 
 ```sh
@@ -127,6 +143,12 @@ Options:
 odk check <input>      Validate schema without emitting
 odk typespec <input>   Generate TypeSpec source only
 odk init               Create a new project
+
+odk generate <input> [options]
+
+Options:
+  -o, --out <dir>        Output directory (default: ./generated)
+  -t, --targets <list>   Generation targets (comma-separated)
 ```
 
 ## Next Steps
