@@ -8,6 +8,7 @@ pub mod msw;
 pub mod python;
 pub mod react_query;
 pub mod sdk;
+pub mod typescript;
 pub mod util;
 
 use crate::config::McpGenerateConfig;
@@ -23,6 +24,7 @@ pub enum Target {
     Msw,
     Mcp,
     Python,
+    Typescript,
 }
 
 impl Target {
@@ -34,6 +36,7 @@ impl Target {
             "msw" => Some(Target::Msw),
             "mcp" => Some(Target::Mcp),
             "python" | "py" => Some(Target::Python),
+            "typescript" | "ts" => Some(Target::Typescript),
             _ => None,
         }
     }
@@ -52,7 +55,7 @@ impl Target {
                         targets.push(t);
                     }
                 }
-                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python", trimmed)),
+                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python, typescript", trimmed)),
             }
         }
         Ok(targets)
@@ -67,6 +70,7 @@ impl fmt::Display for Target {
             Target::Msw => write!(f, "msw"),
             Target::Mcp => write!(f, "mcp"),
             Target::Python => write!(f, "python"),
+            Target::Typescript => write!(f, "typescript"),
         }
     }
 }
@@ -101,6 +105,10 @@ pub fn generate(
 
     if targets.contains(&Target::Python) {
         output.extend(python::generate(schema));
+    }
+
+    if targets.contains(&Target::Typescript) {
+        output.extend(typescript::generate(schema));
     }
 
     if targets.contains(&Target::Mcp) {
