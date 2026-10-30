@@ -131,6 +131,12 @@ enum Commands {
         /// Introspect a GraphQL endpoint to get the schema
         #[arg(long)]
         introspect: Option<String>,
+
+        /// Base name for the model output file(s), replacing the default
+        /// "models" stem (e.g. --out-file opgraph -> opgraph.rs, opgraph.ts).
+        /// Multi-file targets (sdk, react-query, msw, mcp) are unaffected
+        #[arg(long)]
+        out_file: Option<String>,
     },
 
     /// Generate TypeSpec source from a schema (without emitting)
@@ -180,7 +186,8 @@ fn main() -> Result<()> {
             targets,
             operations,
             introspect,
-        } => cmd_generate(input, config, out, targets, operations, introspect),
+            out_file,
+        } => cmd_generate(input, config, out, targets, operations, introspect, out_file),
 
         Commands::Typespec {
             input,
@@ -659,6 +666,7 @@ fn cmd_generate(
     targets_str: String,
     operations: Option<String>,
     introspect_url: Option<String>,
+    out_file: Option<String>,
 ) -> Result<()> {
     use odk_cli::generate::{self, Target};
 
@@ -761,7 +769,13 @@ fn cmd_generate(
         .and_then(|c| c.generate.as_ref())
         .and_then(|g| g.mcp.as_ref());
 
-    let output = generate::generate(&schema, &targets, mcp_config);
+    let mut output = generate::generate(&schema, &targets, mcp_config);
+
+    // Rename the model output stem if requested (e.g. --out-file opgraph ->
+    // opgraph.rs / opgraph.ts)
+    if let Some(stem) = &out_file {
+        output = rename_model_stem(output, stem);
+    }
 
     // Write output files
     fs::create_dir_all(&final_out)
@@ -776,6 +790,23 @@ fn cmd_generate(
 
     eprintln!("Done! {} files generated.", output.len());
     Ok(())
+}
+
+/// Rename the model output stem ("models.<ext>") to a caller-supplied base
+/// name, e.g. "opgraph" -> opgraph.rs / opgraph.ts. Only the model emitters
+/// produce "models.<ext>"; multi-file targets (sdk, react-query, msw, mcp)
+/// keep their own semantic names.
+fn rename_model_stem(
+    output: std::collections::BTreeMap<String, String>,
+    stem: &str,
+) -> std::collections::BTreeMap<String, String> {
+    output
+        .into_iter()
+        .map(|(name, content)| match name.strip_prefix("models.") {
+            Some(ext) => (format!("{stem}.{ext}"), content),
+            None => (name, content),
+        })
+        .collect()
 }
 
 /// Typespec command: generate TypeSpec source only.
@@ -799,4 +830,26 @@ fn cmd_typespec(
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::rename_model_stem;
+    use std::collections::BTreeMap;
+
+    #[test]
+    fn out_file_renames_only_the_models_stem() {
+        let mut out = BTreeMap::new();
+        out.insert("models.rs".to_string(), "r".to_string());
+        out.insert("models.ts".to_string(), "t".to_string());
+        // a multi-file target's output keeps its own name
+        out.insert("client.ts".to_string(), "c".to_string());
+
+        let renamed = rename_model_stem(out, "opgraph");
+
+        assert_eq!(renamed.get("opgraph.rs").map(String::as_str), Some("r"));
+        assert_eq!(renamed.get("opgraph.ts").map(String::as_str), Some("t"));
+        assert_eq!(renamed.get("client.ts").map(String::as_str), Some("c"));
+        assert!(!renamed.contains_key("models.rs"));
+    }
 }

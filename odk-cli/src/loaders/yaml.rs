@@ -32,12 +32,12 @@
 //!   interface BlogApi { }
 //! ```
 
+use indexmap::IndexMap;
 use odk_schema::{
     CompiledField, CompiledModel, CompiledSchema, CompiledType, CompiledUnion,
     CompiledUnionVariant, Extensions, FieldConstraints, LiteralValue, ScalarType,
 };
 use serde::Deserialize;
-use std::collections::HashMap;
 use std::path::Path;
 
 /// Error type for YAML loading.
@@ -85,10 +85,10 @@ pub struct YamlSchema {
     pub imports: Vec<String>,
     /// Model definitions
     #[serde(default)]
-    pub models: HashMap<String, YamlModel>,
+    pub models: IndexMap<String, YamlModel>,
     /// Union/enum definitions
     #[serde(default)]
-    pub unions: HashMap<String, YamlUnion>,
+    pub unions: IndexMap<String, YamlUnion>,
     /// Raw TypeSpec to pass through
     #[serde(default)]
     pub raw: Option<String>,
@@ -108,7 +108,7 @@ pub struct YamlModel {
     #[serde(default)]
     pub decorators: Vec<String>,
     /// Field definitions
-    pub fields: HashMap<String, YamlField>,
+    pub fields: IndexMap<String, YamlField>,
 }
 
 /// YAML field definition.
@@ -183,7 +183,7 @@ pub enum YamlVariants {
     /// String enum: a list of variant names
     Strings(Vec<String>),
     /// Data-carrying union: variant name to its payload fields
-    Objects(HashMap<String, HashMap<String, YamlField>>),
+    Objects(IndexMap<String, IndexMap<String, YamlField>>),
 }
 
 /// Load a schema from a YAML or JSON file.
@@ -557,6 +557,67 @@ unions:
             matches!(&child.field_type, CompiledType::Ref { name } if name == "OpNode"),
             "child should be a ref to OpNode"
         );
+    }
+
+    #[test]
+    fn fields_and_variants_preserve_declaration_order() {
+        let yaml = r#"
+name: OrderAPI
+models:
+  Widget:
+    fields:
+      zeta: string
+      alpha: string
+      mike: string
+      bravo: string
+      yankee: string
+unions:
+  Shape:
+    discriminator: kind
+    variants:
+      square:
+        side: number
+      circle:
+        radius: number
+      triangle:
+        base: number
+"#;
+        // load twice: output must be identical (deterministic) and in the
+        // order the fields and variants were declared in the YAML
+        let first = load_yaml_string(yaml, "order.yaml").unwrap();
+        let second = load_yaml_string(yaml, "order.yaml").unwrap();
+
+        let field_names = |s: &CompiledSchema| -> Vec<String> {
+            s.models
+                .iter()
+                .find(|m| m.name == "Widget")
+                .unwrap()
+                .fields
+                .iter()
+                .map(|f| f.name.clone())
+                .collect()
+        };
+        assert_eq!(
+            field_names(&first),
+            ["zeta", "alpha", "mike", "bravo", "yankee"],
+            "fields should follow declaration order"
+        );
+        assert_eq!(
+            field_names(&first),
+            field_names(&second),
+            "load must be deterministic"
+        );
+
+        let variant_names: Vec<String> = first
+            .unions
+            .iter()
+            .find(|u| u.name == "Shape")
+            .unwrap()
+            .variants
+            .iter()
+            .map(|v| v.name.clone())
+            .collect();
+        assert_eq!(variant_names, ["square", "circle", "triangle"]);
     }
 
     #[test]
