@@ -143,6 +143,8 @@ impl TsCompiledUnion {
                     }),
                 })
                 .collect(),
+            tag: None,
+            rename_all: None,
             description: self.description,
             extensions: Extensions::default(),
             source: None,
@@ -160,6 +162,7 @@ impl TsTypeInfo {
             TsTypeInfo::Reference { name } => CompiledType::Ref { name },
             TsTypeInfo::Array { items } => CompiledType::Array {
                 items: Box::new(items.to_compiled_type()),
+                length: None,
             },
         }
     }

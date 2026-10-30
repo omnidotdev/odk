@@ -146,7 +146,7 @@ fn dataclass(model: &odk_schema::CompiledModel) -> String {
 fn type_to_py(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_py(name).to_string(),
-        CompiledType::Array { items } => format!("list[{}]", type_to_py(items)),
+        CompiledType::Array { items, .. } => format!("list[{}]", type_to_py(items)),
         CompiledType::Ref { name } => name.clone(),
         CompiledType::Literal { value } => match value {
             LiteralValue::String(s) => format!("Literal[\"{}\"]", escape(s)),
@@ -425,6 +425,7 @@ mod tests {
                 items: Box::new(CompiledType::Ref {
                     name: "Track".to_string(),
                 }),
+                length: None,
             },
         ));
 
@@ -443,6 +444,8 @@ mod tests {
                     variant_type: None,
                 })
                 .collect(),
+            tag: None,
+            rename_all: None,
             description: None,
             extensions: odk_schema::Extensions::default(),
             source: None,

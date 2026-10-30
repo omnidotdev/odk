@@ -234,6 +234,8 @@ fn string_enum_union(name: &str, schema: &Value) -> Option<CompiledUnion> {
     Some(CompiledUnion {
         name: name.to_string(),
         variants,
+        tag: None,
+        rename_all: None,
         description: schema
             .get("description")
             .and_then(Value::as_str)
@@ -327,6 +329,7 @@ fn convert_type(schema: &Value) -> (CompiledType, bool) {
 
             CompiledType::Array {
                 items: Box::new(items),
+                length: None,
             }
         }
         Some("object") => {
@@ -673,7 +676,7 @@ mod tests {
         );
 
         let root = schema.models.iter().find(|m| m.name == "T").unwrap();
-        let CompiledType::Array { items } = &field(root, "tracks").field_type else {
+        let CompiledType::Array { items, .. } = &field(root, "tracks").field_type else {
             panic!("expected an array");
         };
         assert!(matches!(items.as_ref(), CompiledType::Ref { name } if name == "Track"));

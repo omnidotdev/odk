@@ -191,7 +191,7 @@ fn variable_to_zod(var: &Variable) -> String {
 fn compiled_type_to_zod(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_zod(name).to_string(),
-        CompiledType::Array { items } => {
+        CompiledType::Array { items, .. } => {
             format!("z.array({})", compiled_type_to_zod(items))
         }
         CompiledType::Ref { name } => match name.as_str() {
@@ -346,6 +346,7 @@ mod tests {
                 items: Box::new(CompiledType::Ref {
                     name: "Post".into(),
                 }),
+                length: None,
             },
             variables: vec![
                 Variable {

@@ -8,7 +8,7 @@ use odk_schema::{
 pub fn type_to_ts(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_ts(name).to_string(),
-        CompiledType::Array { items } => format!("{}[]", type_to_ts(items)),
+        CompiledType::Array { items, .. } => format!("{}[]", type_to_ts(items)),
         CompiledType::Ref { name } => name.clone(),
         CompiledType::Literal { value } => match value {
             odk_schema::LiteralValue::String(s) => format!("\"{}\"", s),
@@ -119,7 +119,7 @@ pub fn variable_to_graphql(var: &Variable) -> String {
 fn compiled_type_to_graphql(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_graphql(name).to_string(),
-        CompiledType::Array { items } => format!("[{}]", compiled_type_to_graphql(items)),
+        CompiledType::Array { items, .. } => format!("[{}]", compiled_type_to_graphql(items)),
         CompiledType::Ref { name } => name.clone(),
         _ => "String".to_string(),
     }
@@ -279,6 +279,7 @@ mod tests {
     fn test_array_to_ts() {
         let arr = CompiledType::Array {
             items: Box::new(CompiledType::Scalar { name: ScalarType::String }),
+            length: None,
         };
         assert_eq!(type_to_ts(&arr), "string[]");
     }

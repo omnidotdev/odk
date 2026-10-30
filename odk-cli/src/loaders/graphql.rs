@@ -88,7 +88,7 @@ pub fn map_graphql_type(ty: &apollo_parser::cst::Type) -> (CompiledType, bool) {
         Type::ListType(list) => {
             if let Some(inner) = list.ty() {
                 let (inner_type, _inner_nullable) = map_graphql_type(&inner);
-                (CompiledType::Array { items: Box::new(inner_type) }, true)
+                (CompiledType::Array { items: Box::new(inner_type), length: None }, true)
             } else {
                 (CompiledType::Scalar { name: ScalarType::Unknown }, true)
             }
@@ -105,7 +105,7 @@ pub fn map_graphql_type(ty: &apollo_parser::cst::Type) -> (CompiledType, bool) {
             } else if let Some(list) = non_null.list_type() {
                 if let Some(inner) = list.ty() {
                     let (inner_type, _) = map_graphql_type(&inner);
-                    (CompiledType::Array { items: Box::new(inner_type) }, false)
+                    (CompiledType::Array { items: Box::new(inner_type), length: None }, false)
                 } else {
                     (CompiledType::Scalar { name: ScalarType::Unknown }, false)
                 }
@@ -401,6 +401,8 @@ fn convert_enum_type(
     Ok(CompiledUnion {
         name,
         variants,
+        tag: None,
+        rename_all: None,
         description,
         extensions: Extensions::default(),
         source: None,
@@ -439,6 +441,8 @@ fn convert_union_type(
     Ok(CompiledUnion {
         name,
         variants,
+        tag: None,
+        rename_all: None,
         description,
         extensions: Extensions::default(),
         source: None,

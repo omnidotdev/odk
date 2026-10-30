@@ -273,7 +273,7 @@ fn emit_operation(op: &odk_schema::CompiledOperation) -> String {
 fn type_to_string(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_typespec(name),
-        CompiledType::Array { items } => format!("{}[]", type_to_string(items)),
+        CompiledType::Array { items, .. } => format!("{}[]", type_to_string(items)),
         CompiledType::Ref { name } => sanitize_identifier(name),
         CompiledType::Literal { value } => match value {
             LiteralValue::String(s) => format!("\"{}\"", escape_string(s)),
