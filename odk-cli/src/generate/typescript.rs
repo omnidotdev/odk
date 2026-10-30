@@ -40,20 +40,26 @@ fn generate_models(schema: &CompiledSchema) -> String {
     ));
 
     for union in &schema.unions {
-        let variants: Vec<String> = union
-            .variants
-            .iter()
-            .map(|v| format!("\"{}\"", escape(&v.name)))
-            .collect();
-
         if let Some(desc) = &union.description {
             out.push_str(&format!("// {}\n", one_line(desc)));
         }
-        out.push_str(&format!(
-            "export type {} = {};\n\n",
-            union.name,
-            variants.join(" | ")
-        ));
+
+        // a discriminator tag marks a data-carrying union, emitted as a
+        // discriminated union; otherwise it is a plain string-literal union
+        if let Some(tag) = &union.tag {
+            out.push_str(&discriminated_union(union, tag));
+        } else {
+            let variants: Vec<String> = union
+                .variants
+                .iter()
+                .map(|v| format!("\"{}\"", escape(&v.name)))
+                .collect();
+            out.push_str(&format!(
+                "export type {} = {};\n\n",
+                union.name,
+                variants.join(" | ")
+            ));
+        }
     }
 
     for model in &schema.models {
@@ -62,6 +68,40 @@ fn generate_models(schema: &CompiledSchema) -> String {
     }
 
     out
+}
+
+/// Render a data-carrying union as a TypeScript discriminated union: one object
+/// type per variant, each carrying the discriminator property plus the
+/// variant's payload. Recursion needs no indirection in TypeScript.
+fn discriminated_union(union: &odk_schema::CompiledUnion, tag: &str) -> String {
+    let mut parts: Vec<String> = Vec::new();
+    for v in &union.variants {
+        let mut props = vec![format!("{tag}: \"{}\"", escape(&v.name))];
+        match &v.variant_type {
+            Some(CompiledType::Object { fields }) => {
+                for f in fields {
+                    let key = property_name(&f.name);
+                    let marker = if f.optional == Some(true) { "?" } else { "" };
+                    props.push(format!("{key}{marker}: {}", type_to_ts(&f.field_type)));
+                }
+                parts.push(format!("{{ {} }}", props.join("; ")));
+            }
+            Some(CompiledType::Ref { name }) => {
+                // a referenced payload is intersected with the tag object
+                parts.push(format!("({{ {} }} & {name})", props.join("; ")));
+            }
+            Some(other) => {
+                props.push(format!("value: {}", type_to_ts(other)));
+                parts.push(format!("{{ {} }}", props.join("; ")));
+            }
+            None => parts.push(format!("{{ {} }}", props.join("; "))),
+        }
+    }
+    format!(
+        "export type {} =\n  | {};\n\n",
+        union.name,
+        parts.join("\n  | ")
+    )
 }
 
 fn interface(model: &odk_schema::CompiledModel) -> String {
@@ -102,7 +142,18 @@ fn interface(model: &odk_schema::CompiledModel) -> String {
 fn type_to_ts(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_ts(name).to_string(),
-        CompiledType::Array { items } => {
+        // a fixed length becomes a TypeScript tuple, holding the size invariant
+        CompiledType::Array {
+            items,
+            length: Some(n),
+        } => {
+            let inner = type_to_ts(items);
+            format!("[{}]", vec![inner; *n as usize].join(", "))
+        }
+        CompiledType::Array {
+            items,
+            length: None,
+        } => {
             let inner = type_to_ts(items);
             // a bare union or literal-union as an element binds looser than the
             // array suffix, so it has to be parenthesized to stay an array of
@@ -301,6 +352,7 @@ mod tests {
                 items: Box::new(CompiledType::Ref {
                     name: "Track".to_string(),
                 }),
+                length: None,
             },
         ));
 
@@ -316,6 +368,7 @@ mod tests {
                 items: Box::new(CompiledType::Union {
                     variants: vec![scalar(ScalarType::String), scalar(ScalarType::Int64)],
                 }),
+                length: None,
             },
         ));
 
@@ -334,6 +387,8 @@ mod tests {
                     variant_type: None,
                 })
                 .collect(),
+            tag: None,
+            rename_all: None,
             description: None,
             extensions: odk_schema::Extensions::default(),
             source: None,
@@ -341,6 +396,66 @@ mod tests {
         schema.add_model(CompiledModel::new("M"));
 
         assert!(render(&schema).contains("export type TrackType = \"audio\" | \"midi\";"));
+    }
+
+    #[test]
+    fn a_data_carrying_union_becomes_a_discriminated_union() {
+        fn obj(fields: Vec<CompiledField>) -> CompiledType {
+            CompiledType::Object { fields }
+        }
+        let vec3 = || CompiledType::fixed_array(scalar(ScalarType::Float64), 3);
+
+        let mut schema = CompiledSchema::new("Geo");
+        schema.add_union(CompiledUnion {
+            name: "OpNode".to_string(),
+            tag: Some("op".to_string()),
+            rename_all: Some("lowercase".to_string()),
+            variants: vec![
+                CompiledUnionVariant {
+                    name: "cube".to_string(),
+                    variant_type: Some(obj(vec![
+                        CompiledField::new("size", vec3()),
+                        CompiledField::new("center", scalar(ScalarType::Boolean)),
+                    ])),
+                },
+                CompiledUnionVariant {
+                    name: "translate".to_string(),
+                    variant_type: Some(obj(vec![
+                        CompiledField::new("v", vec3()),
+                        CompiledField::new("child", CompiledType::reference("OpNode")),
+                    ])),
+                },
+                CompiledUnionVariant {
+                    name: "union".to_string(),
+                    variant_type: Some(obj(vec![CompiledField::new(
+                        "children",
+                        CompiledType::array(CompiledType::reference("OpNode")),
+                    )])),
+                },
+            ],
+            description: None,
+            extensions: odk_schema::Extensions::default(),
+            source: None,
+        });
+
+        let out = render(&schema);
+
+        assert!(
+            out.contains("export type OpNode ="),
+            "not a type alias:\n{out}"
+        );
+        assert!(
+            out.contains("{ op: \"cube\"; size: [number, number, number]; center: boolean }"),
+            "cube variant / tuple wrong:\n{out}"
+        );
+        assert!(
+            out.contains("{ op: \"translate\"; v: [number, number, number]; child: OpNode }"),
+            "translate / recursion wrong:\n{out}"
+        );
+        assert!(
+            out.contains("{ op: \"union\"; children: OpNode[] }"),
+            "union / list recursion wrong:\n{out}"
+        );
     }
 
     #[test]

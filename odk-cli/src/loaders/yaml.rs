@@ -165,8 +165,25 @@ pub struct YamlUnion {
     /// TypeSpec decorators
     #[serde(default)]
     pub decorators: Vec<String>,
-    /// Variant names (for string enums)
-    pub variants: Vec<String>,
+    /// Discriminator key. Its presence marks a data-carrying (tagged) union
+    #[serde(default)]
+    pub discriminator: Option<String>,
+    /// serde `rename_all` rule applied to variant tag values, e.g. "lowercase"
+    #[serde(default)]
+    pub rename: Option<String>,
+    /// Variants: either a list of string names (a plain enum) or a map of
+    /// variant name to its payload fields (a data-carrying union)
+    pub variants: YamlVariants,
+}
+
+/// Union variants in either the string-enum or the data-carrying form.
+#[derive(Debug, Deserialize)]
+#[serde(untagged)]
+pub enum YamlVariants {
+    /// String enum: a list of variant names
+    Strings(Vec<String>),
+    /// Data-carrying union: variant name to its payload fields
+    Objects(HashMap<String, HashMap<String, YamlField>>),
 }
 
 /// Load a schema from a YAML or JSON file.
@@ -304,18 +321,35 @@ fn convert_field(
 fn convert_union(
     name: &str,
     yaml: YamlUnion,
-    _file_name: &str,
+    file_name: &str,
 ) -> Result<CompiledUnion, YamlLoadError> {
-    let variants = yaml
-        .variants
-        .into_iter()
-        .map(|v| CompiledUnionVariant {
-            name: v.clone(),
-            variant_type: Some(CompiledType::Literal {
-                value: LiteralValue::String(v),
-            }),
-        })
-        .collect();
+    let variants = match yaml.variants {
+        YamlVariants::Strings(names) => names
+            .into_iter()
+            .map(|v| CompiledUnionVariant {
+                name: v.clone(),
+                variant_type: Some(CompiledType::Literal {
+                    value: LiteralValue::String(v),
+                }),
+            })
+            .collect(),
+        YamlVariants::Objects(variant_map) => {
+            let mut variants = Vec::with_capacity(variant_map.len());
+            for (variant_name, fields) in variant_map {
+                let mut compiled_fields = Vec::with_capacity(fields.len());
+                for (field_name, yaml_field) in fields {
+                    compiled_fields.push(convert_field(&field_name, yaml_field, file_name)?);
+                }
+                variants.push(CompiledUnionVariant {
+                    name: variant_name,
+                    variant_type: Some(CompiledType::Object {
+                        fields: compiled_fields,
+                    }),
+                });
+            }
+            variants
+        }
+    };
 
     let mut extensions = Extensions::default();
     for decorator in yaml.decorators {
@@ -325,6 +359,8 @@ fn convert_union(
     Ok(CompiledUnion {
         name: name.to_string(),
         variants,
+        tag: yaml.discriminator,
+        rename_all: yaml.rename,
         description: yaml.description,
         extensions,
         source: None,
@@ -341,7 +377,21 @@ fn parse_type(type_str: &str) -> Result<CompiledType, YamlLoadError> {
         let inner_type = parse_type(inner)?;
         return Ok(CompiledType::Array {
             items: Box::new(inner_type),
+            length: None,
         });
+    }
+
+    // Fixed-length array syntax: `base[N]` (e.g. "number[3]" -> [f64; 3])
+    if let Some(inner) = type_str.strip_suffix(']') {
+        if let Some((base, len_str)) = inner.rsplit_once('[') {
+            if let Ok(len) = len_str.parse::<u32>() {
+                let inner_type = parse_type(base)?;
+                return Ok(CompiledType::Array {
+                    items: Box::new(inner_type),
+                    length: Some(len),
+                });
+            }
+        }
     }
 
     // Check for scalar types
@@ -453,6 +503,60 @@ unions:
         let status = &schema.unions[0];
         assert_eq!(status.name, "Status");
         assert_eq!(status.variants.len(), 3);
+    }
+
+    #[test]
+    fn test_parse_discriminated_union() {
+        let yaml = r#"
+name: Geo
+unions:
+  OpNode:
+    discriminator: op
+    rename: lowercase
+    variants:
+      cube:
+        size: number[3]
+        center: boolean
+      translate:
+        v: number[3]
+        child: OpNode
+      union:
+        children: OpNode[]
+"#;
+
+        let schema = load_yaml_string(yaml, "geo.yaml").unwrap();
+        let op = schema.unions.iter().find(|u| u.name == "OpNode").unwrap();
+
+        assert_eq!(op.tag.as_deref(), Some("op"));
+        assert_eq!(op.rename_all.as_deref(), Some("lowercase"));
+        assert_eq!(op.variants.len(), 3);
+
+        let cube = op.variants.iter().find(|v| v.name == "cube").unwrap();
+        let Some(CompiledType::Object { fields }) = &cube.variant_type else {
+            panic!("cube variant should carry an object payload");
+        };
+        let size = fields.iter().find(|f| f.name == "size").unwrap();
+        assert!(
+            matches!(
+                &size.field_type,
+                CompiledType::Array {
+                    length: Some(3),
+                    ..
+                }
+            ),
+            "size should be a fixed-length array of 3, got {:?}",
+            size.field_type
+        );
+
+        let translate = op.variants.iter().find(|v| v.name == "translate").unwrap();
+        let Some(CompiledType::Object { fields }) = &translate.variant_type else {
+            panic!("translate should carry an object payload");
+        };
+        let child = fields.iter().find(|f| f.name == "child").unwrap();
+        assert!(
+            matches!(&child.field_type, CompiledType::Ref { name } if name == "OpNode"),
+            "child should be a ref to OpNode"
+        );
     }
 
     #[test]

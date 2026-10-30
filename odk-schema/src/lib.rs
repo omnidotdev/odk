@@ -273,8 +273,14 @@ pub struct FieldConstraints {
 pub enum CompiledType {
     /// Scalar type (string, int32, etc.)
     Scalar { name: ScalarType },
-    /// Array type
-    Array { items: Box<CompiledType> },
+    /// Array type. A `length` makes it a fixed-length array (Rust `[T; n]`, a
+    /// TypeScript tuple), encoding a compile-time size invariant (vectors,
+    /// colors, matrices); `None` is a variable-length list
+    Array {
+        items: Box<CompiledType>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        length: Option<u32>,
+    },
     /// Reference to another type
     Ref { name: String },
     /// Literal value
@@ -329,6 +335,16 @@ pub struct CompiledUnion {
     pub name: String,
     /// Variant definitions
     pub variants: Vec<CompiledUnionVariant>,
+    /// Discriminator key for a data-carrying (tagged) union, e.g. "op". When
+    /// set, variants carry payloads and the union emits as a serde
+    /// internally-tagged enum (Rust) / discriminated union (TypeScript). When
+    /// `None`, the union is a plain string enum (today's behavior)
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub tag: Option<String>,
+    /// serde `rename_all` rule applied to variant tag values on the wire, e.g.
+    /// "lowercase". Emitted verbatim into the container's serde attribute
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub rename_all: Option<String>,
     /// Optional description
     #[serde(skip_serializing_if = "Option::is_none")]
     pub description: Option<String>,
@@ -535,10 +551,19 @@ impl CompiledType {
         }
     }
 
-    /// Create an array type.
+    /// Create a variable-length array type.
     pub fn array(items: CompiledType) -> Self {
         Self::Array {
             items: Box::new(items),
+            length: None,
+        }
+    }
+
+    /// Create a fixed-length array type (Rust `[T; n]`, a TypeScript tuple).
+    pub fn fixed_array(items: CompiledType, length: u32) -> Self {
+        Self::Array {
+            items: Box::new(items),
+            length: Some(length),
         }
     }
 

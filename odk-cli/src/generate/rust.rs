@@ -61,6 +61,12 @@ fn generate_models(schema: &CompiledSchema) -> String {
 /// valid Rust identifiers, so each variant is emitted as a PascalCase
 /// identifier carrying a serde rename back to its exact wire string.
 fn enum_def(union: &odk_schema::CompiledUnion) -> String {
+    // a discriminator tag marks a data-carrying (internally-tagged) union; its
+    // variants carry payloads and it emits as a serde-tagged enum
+    if union.tag.is_some() {
+        return tagged_enum_def(union);
+    }
+
     let mut out = String::new();
 
     if let Some(desc) = &union.description {
@@ -86,6 +92,99 @@ fn enum_def(union: &odk_schema::CompiledUnion) -> String {
     }
     out.push_str("}\n");
     out
+}
+
+/// Render a data-carrying union as a serde internally-tagged enum.
+///
+/// The discriminator key becomes `#[serde(tag = "...")]`; an object variant
+/// becomes a struct variant, a ref variant a newtype variant. A direct
+/// reference back to the enum is boxed so the type stays finite; a reference
+/// inside a `Vec` is left unboxed, since the `Vec` is already indirection.
+fn tagged_enum_def(union: &odk_schema::CompiledUnion) -> String {
+    let mut out = String::new();
+
+    if let Some(desc) = &union.description {
+        out.push_str(&format!("// {}\n", one_line(desc)));
+    }
+
+    out.push_str(DERIVE);
+    out.push('\n');
+
+    let mut attr_parts = vec![format!(
+        "tag = \"{}\"",
+        escape(union.tag.as_deref().unwrap_or(""))
+    )];
+    if let Some(rule) = &union.rename_all {
+        attr_parts.push(format!("rename_all = \"{}\"", escape(rule)));
+    }
+    out.push_str(&format!("#[serde({})]\n", attr_parts.join(", ")));
+
+    if union.variants.is_empty() {
+        out.push_str(&format!("pub enum {} {{}}\n", union.name));
+        return out;
+    }
+
+    out.push_str(&format!("pub enum {} {{\n", union.name));
+    let mut used: Vec<String> = Vec::new();
+    for v in &union.variants {
+        let ident = dedup(&mut used, &pascal_case(&v.name), "");
+        // with a container rename_all the wire tag is derived from the ident, so
+        // a per-variant rename is only needed when there is no such rule
+        if union.rename_all.is_none() && ident != v.name {
+            out.push_str(&format!("    #[serde(rename = \"{}\")]\n", escape(&v.name)));
+        }
+        match &v.variant_type {
+            Some(CompiledType::Object { fields }) => {
+                out.push_str(&format!("    {ident} {{\n"));
+                let mut fused: Vec<String> = Vec::new();
+                for f in fields {
+                    let fident = dedup(&mut fused, &field_ident(&f.name), "_");
+                    let is_optional = f.optional == Some(true);
+                    let mut serde_parts: Vec<String> = Vec::new();
+                    if fident != f.name {
+                        serde_parts.push(format!("rename = \"{}\"", escape(&f.name)));
+                    }
+                    if is_optional {
+                        serde_parts.push("skip_serializing_if = \"Option::is_none\"".to_string());
+                        serde_parts.push("default".to_string());
+                    }
+                    if !serde_parts.is_empty() {
+                        out.push_str(&format!("        #[serde({})]\n", serde_parts.join(", ")));
+                    }
+                    let ty = variant_field_type(&f.field_type, &union.name);
+                    let ty = if is_optional {
+                        format!("Option<{ty}>")
+                    } else {
+                        ty
+                    };
+                    out.push_str(&format!("        {fident}: {ty},\n"));
+                }
+                out.push_str("    },\n");
+            }
+            Some(CompiledType::Ref { name }) => {
+                let ty = variant_field_type(&CompiledType::Ref { name: name.clone() }, &union.name);
+                out.push_str(&format!("    {ident}({ty}),\n"));
+            }
+            Some(other) => {
+                out.push_str(&format!("    {ident}({}),\n", type_to_rust(other)));
+            }
+            None => {
+                out.push_str(&format!("    {ident},\n"));
+            }
+        }
+    }
+    out.push_str("}\n");
+    out
+}
+
+/// Map a field type inside an enum variant, boxing a direct self-reference so
+/// the recursive enum has a finite size (a reference nested in a `Vec` or other
+/// container does not need boxing).
+fn variant_field_type(t: &CompiledType, self_name: &str) -> String {
+    match t {
+        CompiledType::Ref { name } if name == self_name => format!("Box<{name}>"),
+        _ => type_to_rust(t),
+    }
 }
 
 fn struct_def(model: &odk_schema::CompiledModel) -> String {
@@ -150,7 +249,18 @@ fn struct_def(model: &odk_schema::CompiledModel) -> String {
 fn type_to_rust(t: &CompiledType) -> String {
     match t {
         CompiledType::Scalar { name } => scalar_to_rust(name).to_string(),
-        CompiledType::Array { items } => format!("Vec<{}>", type_to_rust(items)),
+        // a fixed length encodes a compile-time size as a Rust array; otherwise
+        // it is a variable-length Vec
+        CompiledType::Array {
+            items,
+            length: Some(n),
+        } => format!("[{}; {}]", type_to_rust(items), n),
+        CompiledType::Array {
+            items,
+            length: None,
+        } => {
+            format!("Vec<{}>", type_to_rust(items))
+        }
         CompiledType::Ref { name } => name.clone(),
         CompiledType::Literal { value } => match value {
             LiteralValue::String(_) => "String".to_string(),
@@ -410,6 +520,7 @@ mod tests {
                 items: Box::new(CompiledType::Ref {
                     name: "Track".to_string(),
                 }),
+                length: None,
             },
         ));
 
@@ -428,6 +539,8 @@ mod tests {
                     variant_type: None,
                 })
                 .collect(),
+            tag: None,
+            rename_all: None,
             description: None,
             extensions: odk_schema::Extensions::default(),
             source: None,
@@ -442,6 +555,76 @@ mod tests {
     }
 
     #[test]
+    fn a_data_carrying_union_becomes_an_internally_tagged_enum() {
+        fn obj(fields: Vec<CompiledField>) -> CompiledType {
+            CompiledType::Object { fields }
+        }
+        let vec3 = || CompiledType::fixed_array(scalar(ScalarType::Float64), 3);
+
+        let mut schema = CompiledSchema::new("Geo");
+        schema.add_union(CompiledUnion {
+            name: "OpNode".to_string(),
+            tag: Some("op".to_string()),
+            rename_all: Some("lowercase".to_string()),
+            variants: vec![
+                CompiledUnionVariant {
+                    name: "cube".to_string(),
+                    variant_type: Some(obj(vec![
+                        CompiledField::new("size", vec3()),
+                        CompiledField::new("center", scalar(ScalarType::Boolean)),
+                    ])),
+                },
+                CompiledUnionVariant {
+                    name: "translate".to_string(),
+                    variant_type: Some(obj(vec![
+                        CompiledField::new("v", vec3()),
+                        CompiledField::new("child", CompiledType::reference("OpNode")),
+                    ])),
+                },
+                CompiledUnionVariant {
+                    name: "union".to_string(),
+                    variant_type: Some(obj(vec![CompiledField::new(
+                        "children",
+                        CompiledType::array(CompiledType::reference("OpNode")),
+                    )])),
+                },
+            ],
+            description: None,
+            extensions: odk_schema::Extensions::default(),
+            source: None,
+        });
+        schema.add_model(CompiledModel::new("M"));
+
+        let out = render(&schema);
+
+        // container is an internally-tagged enum
+        assert!(
+            out.contains("#[serde(tag = \"op\", rename_all = \"lowercase\")]"),
+            "missing container tag attr:\n{out}"
+        );
+        assert!(out.contains("pub enum OpNode {"), "not an enum:\n{out}");
+        // data-carrying struct variants
+        assert!(out.contains("Cube {"), "missing Cube variant:\n{out}");
+        assert!(
+            out.contains("size: [f64; 3]"),
+            "fixed-length array wrong:\n{out}"
+        );
+        assert!(out.contains("center: bool"));
+        assert!(out.contains("Translate {"));
+        // self-recursion is boxed so the type is finite
+        assert!(
+            out.contains("child: Box<OpNode>"),
+            "recursive ref not boxed:\n{out}"
+        );
+        assert!(out.contains("Union {"));
+        // a Vec is already indirection, so it is not boxed
+        assert!(
+            out.contains("children: Vec<OpNode>"),
+            "vec recursion wrong:\n{out}"
+        );
+    }
+
+    #[test]
     fn enum_variants_that_pascalcase_to_the_same_ident_are_disambiguated() {
         let mut schema = CompiledSchema::new("Test");
         schema.add_union(CompiledUnion {
@@ -453,6 +636,8 @@ mod tests {
                     variant_type: None,
                 })
                 .collect(),
+            tag: None,
+            rename_all: None,
             description: None,
             extensions: odk_schema::Extensions::default(),
             source: None,
