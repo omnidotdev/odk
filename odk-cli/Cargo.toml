@@ -28,6 +28,9 @@ extism = "1.0"
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 serde_yaml = "0.9"
+# Order-preserving map so schema declaration order (fields, variants) survives
+# deserialization and generated output is deterministic
+indexmap = { version = "2", features = ["serde"] }
 
 # File handling
 camino = { version = "1.1", features = ["serde1"] }
