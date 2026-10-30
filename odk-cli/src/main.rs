@@ -376,6 +376,17 @@ fn compile_with_typespec(
     for emitter in &emitters {
         deps.insert(emitter.clone(), serde_json::json!("*"));
     }
+    // The generated TypeSpec imports whatever the schema declares (e.g.
+    // "@typespec/http"), so those libraries must be installed too, not just the
+    // emitters. An emitter that does not pull them in transitively (the Drizzle
+    // emitter, unlike openapi3 which depends on @typespec/http) would otherwise
+    // fail to resolve the import. Relative imports are files, not packages
+    for import in &schema.imports {
+        if import.starts_with('.') || import.starts_with('/') {
+            continue;
+        }
+        deps.insert(import.clone(), serde_json::json!("*"));
+    }
     let package_json = serde_json::json!({
         "name": "odk-temp-project",
         "type": "module",
