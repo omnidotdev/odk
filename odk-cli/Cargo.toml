@@ -39,8 +39,11 @@ tempfile = "3.5"
 # GraphQL parsing
 apollo-parser = "0.8"
 
-# HTTP client (for introspection)
+# HTTP client (for introspection and OCI publishing)
 ureq = { version = "3", features = ["json"] }
+
+# Content digests for OCI artifacts
+sha2 = "0.10"
 
 # Glob pattern matching (for --operations flag)
 glob = "0.3"

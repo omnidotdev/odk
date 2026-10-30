@@ -152,6 +152,28 @@ enum Commands {
         #[arg(short, long)]
         namespace: Option<String>,
     },
+
+    /// Publish a schema to an OCI registry as an artifact
+    Publish {
+        /// Input source: .ts, .yaml, .json, .wasm, or .graphql file
+        input: Utf8PathBuf,
+
+        /// Registry base URL (e.g. https://manifold.omni.dev)
+        #[arg(short, long)]
+        registry: String,
+
+        /// Repository path (e.g. myteam/blog-api)
+        #[arg(long)]
+        repository: String,
+
+        /// Tag for the published artifact
+        #[arg(short, long, default_value = "latest")]
+        tag: String,
+
+        /// Bearer token (falls back to the ODK_REGISTRY_TOKEN env var)
+        #[arg(long)]
+        token: Option<String>,
+    },
 }
 
 fn main() -> Result<()> {
@@ -194,6 +216,14 @@ fn main() -> Result<()> {
             out,
             namespace,
         } => cmd_typespec(input, out, namespace),
+
+        Commands::Publish {
+            input,
+            registry,
+            repository,
+            tag,
+            token,
+        } => cmd_publish(input, registry, repository, tag, token),
     }
 }
 
@@ -807,6 +837,39 @@ fn rename_model_stem(
             None => (name, content),
         })
         .collect()
+}
+
+/// Publish command: push a schema to an OCI registry as an artifact.
+fn cmd_publish(
+    input: Utf8PathBuf,
+    registry: String,
+    repository: String,
+    tag: String,
+    token: Option<String>,
+) -> Result<()> {
+    use odk_cli::publish::{self, PublishTarget};
+
+    eprintln!("Loading schema from {input}...");
+    let schema = load_schema(&input)?;
+
+    // an explicit --token wins, else fall back to the environment
+    let token = token.or_else(|| std::env::var("ODK_REGISTRY_TOKEN").ok());
+    let target = PublishTarget {
+        registry,
+        repository,
+        tag,
+        token,
+    };
+
+    eprintln!(
+        "Publishing to {}/v2/{}:{}...",
+        target.registry.trim_end_matches('/'),
+        target.repository,
+        target.tag
+    );
+    let reference = publish::publish(&schema, &target)?;
+    println!("Published {reference}");
+    Ok(())
 }
 
 /// Typespec command: generate TypeSpec source only.
