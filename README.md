@@ -67,14 +67,16 @@ await odk.emit(schema, {
 
 ## Documentation
 
-| Guide                                            | Description                 |
-| ------------------------------------------------ | --------------------------- |
-| [QUICKSTART.md](QUICKSTART.md)                   | Get started in 2 minutes    |
-| [docs/yaml-format.md](docs/yaml-format.md)       | YAML schema reference       |
-| [docs/typescript-sdk.md](docs/typescript-sdk.md) | TypeScript SDK API          |
-| [docs/python-pdk.md](docs/python-pdk.md)         | Python PDK                  |
-| [docs/rust-plugins.md](docs/rust-plugins.md)     | Rust WASM plugins           |
-| [docs/extensions.md](docs/extensions.md)         | Escape hatches & extensions |
+Full documentation is hosted at [docs.omni.dev/products/odk](https://docs.omni.dev/products/odk).
+
+| Guide                                                                              | Description                 |
+| ---------------------------------------------------------------------------------- | --------------------------- |
+| [QUICKSTART.md](QUICKSTART.md)                                                     | Get started in 2 minutes    |
+| [YAML format](https://docs.omni.dev/products/odk/yaml-format)                      | YAML schema reference       |
+| [TypeScript SDK](https://docs.omni.dev/products/odk/typescript-sdk)                | TypeScript SDK API          |
+| [Python PDK](https://docs.omni.dev/products/odk/python-pdk)                        | Python PDK                  |
+| [Rust plugins](https://docs.omni.dev/products/odk/rust-plugins)                    | Rust WASM plugins           |
+| [Extensions](https://docs.omni.dev/products/odk/extensions)                        | Escape hatches & extensions |
 
 ## Project Structure
 
@@ -85,8 +87,7 @@ odk/
 ├── odk-ts/         # TypeScript SDK
 ├── odk-pdk-rust/   # Rust plugin SDK
 ├── odk-pdk-py/     # Python PDK
-├── examples/       # Example schemas
-└── docs/           # Documentation
+└── examples/       # Example schemas
 ```
 
 ## License
