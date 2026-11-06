@@ -30,6 +30,10 @@ schema-test*.json
 *.swp
 *.swo
 
+# Agent / tooling local state
+.claude/
+.playwright-mcp/
+
 # OS
 .DS_Store
 Thumbs.db
