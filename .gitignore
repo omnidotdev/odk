@@ -4,8 +4,9 @@ node_modules/
 # Rust build artifacts
 target/
 */target/
-Cargo.lock
-*/Cargo.lock
+# Cargo.lock IS committed: odk ships a binary crate (odk-cli), so the lockfile
+# must be version-controlled for reproducible builds (a fresh checkout without
+# it re-resolves to incompatible toolchain/native-build deps)
 
 # TypeScript build output
 dist/

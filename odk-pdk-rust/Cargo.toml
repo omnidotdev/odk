@@ -10,7 +10,7 @@ license = "Apache-2.0"
 extism-pdk = "1.0"
 
 # Schema types (shared with host)
-odk-schema = { path = "../odk-schema" }
+odk-schema = { path = "../odk-schema", version = "0.1.0" }
 
 # Serialization
 serde = { version = "1.0", features = ["derive"] }

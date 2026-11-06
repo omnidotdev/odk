@@ -1,8 +1,11 @@
 {
-  "name": "@omnidotdev/odk",
+  "name": "@omnidotdev/odk-typespec",
   "version": "0.1.0",
   "type": "module",
   "private": true,
+  "workspaces": [
+    "odk-ts"
+  ],
   "scripts": {
     "compile": "tsp compile .",
     "compile:watch": "tsp compile . --watch",
@@ -11,17 +14,23 @@
     "prepare": "husky",
     "knip": "knip-bun",
     "check": "biome check",
-    "lint": "biome lint"
+    "lint": "biome lint",
+    "changeset": "changeset",
+    "version": "changeset version && bun run sync:versions",
+    "sync:versions": "bun run scripts/sync-versions.ts",
+    "release": "bun run --cwd odk-ts build && changeset publish"
   },
   "dependencies": {
-    "@openapitools/openapi-generator-cli": "^2.25.0",
-    "@typespec/compiler": "^1.6.0"
+    "@openapitools/openapi-generator-cli": "^2.42.0",
+    "@typespec/compiler": "^1.17.0"
   },
   "devDependencies": {
     "@biomejs/biome": "2.3.11",
-    "@types/node": "^24.10.1",
+    "@changesets/changelog-github": "^0.5.2",
+    "@changesets/cli": "^2.31.1",
+    "@types/node": "^24.19.2",
     "husky": "^9.1.7",
-    "knip": "^5.86.0",
+    "knip": "^5.88.1",
     "typescript": "^5.9.3"
   }
 }

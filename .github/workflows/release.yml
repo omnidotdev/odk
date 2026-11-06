@@ -1,0 +1,118 @@
+name: Release 🏗️
+
+on:
+  push:
+    branches: [master]
+
+concurrency: ${{ github.workflow }}-${{ github.ref }}
+
+permissions:
+  contents: write
+  pull-requests: write
+  id-token: write # npm provenance + PyPI trusted publishing
+
+jobs:
+  release:
+    name: Handle release 🦋
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          # pin Bun so the toolchain does not drift with floating latest
+          bun-version: 1.3.6
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          registry-url: "https://registry.npmjs.org"
+
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      # Opens/updates the "version packages" PR (running `bun run version`,
+      # which bumps @omnidotdev/odk and propagates the version to the crates and
+      # the Python PDK). When that PR is merged, publishes the npm SDK via
+      # `bun run release`
+      - name: Create release PR or publish 🦋
+        id: changesets
+        uses: changesets/action@v2
+        with:
+          version: bun run version
+          publish: bun run release
+          title: "feature(release): version packages"
+          commit: "ci(changesets): version packages"
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+          NPM_CONFIG_PROVENANCE: "true"
+
+      # Everything below publishes the SAME version to the other registries, and
+      # only runs on the push where a new version was actually published to npm
+      - name: Set up Rust
+        if: steps.changesets.outputs.published == 'true'
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Publish crates to crates.io
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -euo pipefail
+          # odk-schema first: odk-cli and odk-pdk depend on it. The dependents
+          # retry while the crates.io index catches up with the new odk-schema
+          cargo publish -p odk-schema
+          for crate in odk-cli odk-pdk; do
+            published=false
+            for attempt in 1 2 3 4 5 6; do
+              if cargo publish -p "$crate"; then published=true; break; fi
+              echo "waiting for crates.io index (attempt $attempt)..."
+              sleep 20
+            done
+            if [ "$published" = false ]; then
+              echo "failed to publish $crate after retries" >&2
+              exit 1
+            fi
+          done
+
+      - name: Set up Python
+        if: steps.changesets.outputs.published == 'true'
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Build Python PDK
+        if: steps.changesets.outputs.published == 'true'
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade build
+          python -m build odk-pdk-py --outdir odk-pdk-py/dist
+
+      - name: Publish Python PDK to PyPI
+        if: steps.changesets.outputs.published == 'true'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: odk-pdk-py/dist
+
+      # Manifold mirror (dogfood + funnel): publishes the same npm + Cargo
+      # artifacts to the Omni-native registry under the `omni` namespace.
+      # TODO(launch): confirm the Manifold npm + Cargo registry URLs and add the
+      # MANIFOLD_TOKEN secret, then enable the commands below. Kept inert so a
+      # public release never blocks on the mirror
+      - name: Mirror to Manifold (npm + Cargo)
+        if: steps.changesets.outputs.published == 'true'
+        env:
+          MANIFOLD_TOKEN: ${{ secrets.MANIFOLD_TOKEN }}
+          MANIFOLD_NPM_REGISTRY: ${{ vars.MANIFOLD_NPM_REGISTRY }}
+          MANIFOLD_CARGO_REGISTRY: ${{ vars.MANIFOLD_CARGO_REGISTRY }}
+        run: |
+          if [ -z "${MANIFOLD_NPM_REGISTRY:-}" ] || [ -z "${MANIFOLD_TOKEN:-}" ]; then
+            echo "Manifold mirror not configured (MANIFOLD_NPM_REGISTRY / MANIFOLD_TOKEN unset); skipping"
+            exit 0
+          fi
+          # npm mirror: same package name, different registry
+          #   (cd odk-ts && npm publish --registry "$MANIFOLD_NPM_REGISTRY")
+          # cargo mirror:
+          #   cargo publish --registry manifold -p odk-schema ... (ordered)
+          echo "Manifold mirror configured; wire the publish commands once the registry URLs are confirmed"
