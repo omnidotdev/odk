@@ -189,7 +189,9 @@ fn main() -> Result<()> {
             keep_temp,
             operations,
             introspect,
-        } => cmd_compile(input, config, out, emit, namespace, keep_temp, operations, introspect),
+        } => cmd_compile(
+            input, config, out, emit, namespace, keep_temp, operations, introspect,
+        ),
 
         Commands::Init { lang, name } => cmd_init(lang, name),
 
@@ -209,7 +211,9 @@ fn main() -> Result<()> {
             operations,
             introspect,
             out_file,
-        } => cmd_generate(input, config, out, targets, operations, introspect, out_file),
+        } => cmd_generate(
+            input, config, out, targets, operations, introspect, out_file,
+        ),
 
         Commands::Typespec {
             input,
@@ -395,9 +399,13 @@ fn compile_with_typespec(
 
     eprintln!("Using TypeSpec emitters: {}", emitters.join(", "));
 
-    // Generate TypeSpec source
+    // Generate TypeSpec source. When protobuf is a requested emitter, the
+    // bridge injects the protobuf decorators (@package/@message/@field) the
+    // emitter requires, so a `.proto` is produced without hand-written
+    // protobuf decorators in the schema
     let ns = namespace.as_deref().unwrap_or(&schema.name);
-    let tsp_source = typespec_bridge::compiled_to_typespec(schema, ns);
+    let emit_options = typespec_bridge::emit_options_for(&emitters, ns);
+    let tsp_source = typespec_bridge::compiled_to_typespec_with_options(schema, ns, &emit_options);
 
     // Create temp directory for TypeSpec project
     let temp_dir = tempfile::tempdir()?;
@@ -722,23 +730,20 @@ fn cmd_generate(
     } else {
         targets_str
     };
-    let final_operations = operations.or_else(|| {
-        gen_cfg.and_then(|g| g.operations.clone())
-    });
+    let final_operations = operations.or_else(|| gen_cfg.and_then(|g| g.operations.clone()));
     let final_out = if out == Utf8PathBuf::from("./generated") {
-        gen_cfg
-            .and_then(|g| g.output.clone())
-            .unwrap_or(out)
+        gen_cfg.and_then(|g| g.output.clone()).unwrap_or(out)
     } else {
         out
     };
 
     // Parse targets
-    let targets = Target::parse_list(&final_targets_str)
-        .map_err(|e| anyhow::anyhow!(e))?;
+    let targets = Target::parse_list(&final_targets_str).map_err(|e| anyhow::anyhow!(e))?;
 
     if targets.is_empty() {
-        bail!("No targets specified. Available: sdk, react-query, msw, mcp, python, typescript, rust");
+        bail!(
+            "No targets specified. Available: sdk, react-query, msw, mcp, python, typescript, rust"
+        );
     }
 
     // Load schema
@@ -780,7 +785,11 @@ fn cmd_generate(
     }
 
     if schema.operations.is_empty() {
-        eprintln!("  {} models, {} unions", schema.models.len(), schema.unions.len());
+        eprintln!(
+            "  {} models, {} unions",
+            schema.models.len(),
+            schema.unions.len()
+        );
     } else {
         eprintln!(
             "  {} operations, {} fragments",
@@ -813,8 +822,7 @@ fn cmd_generate(
 
     for (filename, content) in &output {
         let path = final_out.join(filename);
-        fs::write(&path, content)
-            .with_context(|| format!("Failed to write {}", path))?;
+        fs::write(&path, content).with_context(|| format!("Failed to write {}", path))?;
         eprintln!("  Wrote {}", path);
     }
 

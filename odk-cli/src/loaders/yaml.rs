@@ -420,6 +420,26 @@ fn parse_type(type_str: &str) -> Result<CompiledType, YamlLoadError> {
         "datetime" | "timestamp" => Ok(CompiledType::Scalar {
             name: ScalarType::Datetime,
         }),
+        // TypeSpec built-in temporal scalars, recognized so emitters can act on
+        // them (e.g. protobuf, which has no temporal scalar, degrades to string)
+        "utcdatetime" => Ok(CompiledType::Scalar {
+            name: ScalarType::UtcDateTime,
+        }),
+        "offsetdatetime" => Ok(CompiledType::Scalar {
+            name: ScalarType::OffsetDateTime,
+        }),
+        "plaindate" => Ok(CompiledType::Scalar {
+            name: ScalarType::PlainDate,
+        }),
+        "plaintime" => Ok(CompiledType::Scalar {
+            name: ScalarType::PlainTime,
+        }),
+        "duration" => Ok(CompiledType::Scalar {
+            name: ScalarType::Duration,
+        }),
+        "url" | "uri" => Ok(CompiledType::Scalar {
+            name: ScalarType::Url,
+        }),
         "bytes" | "binary" => Ok(CompiledType::Scalar {
             name: ScalarType::Bytes,
         }),
@@ -433,6 +453,49 @@ fn parse_type(type_str: &str) -> Result<CompiledType, YamlLoadError> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn test_parse_type_recognizes_builtin_temporal_and_url_scalars() {
+        // TypeSpec built-in temporal/url scalar names must load as the matching
+        // ScalarType, not fall through to an opaque Ref, so downstream emitters
+        // (e.g. protobuf degrading temporal to string) can act on them
+        assert!(matches!(
+            parse_type("utcDateTime").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::UtcDateTime
+            }
+        ));
+        assert!(matches!(
+            parse_type("offsetDateTime").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::OffsetDateTime
+            }
+        ));
+        assert!(matches!(
+            parse_type("plainDate").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::PlainDate
+            }
+        ));
+        assert!(matches!(
+            parse_type("plainTime").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::PlainTime
+            }
+        ));
+        assert!(matches!(
+            parse_type("duration").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::Duration
+            }
+        ));
+        assert!(matches!(
+            parse_type("url").unwrap(),
+            CompiledType::Scalar {
+                name: ScalarType::Url
+            }
+        ));
+    }
 
     #[test]
     fn test_parse_simple_yaml() {

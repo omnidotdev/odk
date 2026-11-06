@@ -13,43 +13,103 @@ use odk_schema::{
     LiteralValue, ScalarType,
 };
 
+/// Protobuf-specific emission options.
+///
+/// When present, the bridge decorates the output with the `@typespec/protobuf`
+/// decorators the emitter requires (`@package` on the namespace, `@message` on
+/// each model, `@field(n)` on each property), so `odk compile -e
+/// @typespec/protobuf` produces a `.proto` without the author hand-writing
+/// protobuf decorators
+#[derive(Debug, Clone)]
+pub struct ProtobufOptions {
+    /// The protobuf package name (also drives the emitted `.proto` file name)
+    pub package: String,
+}
+
+/// Target-specific options that influence TypeSpec emission.
+#[derive(Debug, Clone, Default)]
+pub struct EmitOptions {
+    /// Set when `@typespec/protobuf` is a requested emitter
+    pub protobuf: Option<ProtobufOptions>,
+}
+
+/// Derive emission options from the requested emitters and namespace.
+///
+/// When `@typespec/protobuf` is among the emitters, the protobuf package name
+/// is derived from the namespace (sanitized, lowercased) so compilation is
+/// turnkey without the author supplying protobuf decorators.
+pub fn emit_options_for(emitters: &[String], namespace: &str) -> EmitOptions {
+    let protobuf = emitters
+        .iter()
+        .any(|e| e == "@typespec/protobuf")
+        .then(|| ProtobufOptions {
+            package: sanitize_identifier(namespace).to_lowercase(),
+        });
+    EmitOptions { protobuf }
+}
+
 /// Convert a CompiledSchema to TypeSpec source code.
 pub fn compiled_to_typespec(schema: &CompiledSchema, namespace: &str) -> String {
-    let mut lines = Vec::new();
+    compiled_to_typespec_with_options(schema, namespace, &EmitOptions::default())
+}
 
-    // Emit imports from schema (must come first)
-    for import in &schema.imports {
+/// Convert a CompiledSchema to TypeSpec source code with target options.
+pub fn compiled_to_typespec_with_options(
+    schema: &CompiledSchema,
+    namespace: &str,
+    options: &EmitOptions,
+) -> String {
+    let mut lines = Vec::new();
+    let protobuf = options.protobuf.is_some();
+
+    // The effective import list. When protobuf is targeted, the library must be
+    // imported so its decorators resolve, even if the schema did not declare it
+    let mut imports: Vec<String> = schema.imports.clone();
+    if protobuf && !imports.iter().any(|i| i == "@typespec/protobuf") {
+        imports.push("@typespec/protobuf".to_string());
+    }
+
+    // Emit imports (must come first)
+    for import in &imports {
         lines.push(format!("import \"{}\";", import));
     }
 
-    if !schema.imports.is_empty() {
+    if !imports.is_empty() {
         lines.push(String::new());
     }
 
     // Emit 'using' statements to bring decorators into scope
-    for import in &schema.imports {
+    for import in &imports {
         if let Some(using_ns) = import_to_using_namespace(import) {
             lines.push(format!("using {};", using_ns));
         }
     }
 
-    if !schema.imports.is_empty() {
+    if !imports.is_empty() {
         lines.push(String::new());
     }
 
-    // Namespace
+    // Namespace, optionally declared as a protobuf package. The object-literal
+    // argument syntax (`@package({ name: ... })`) is what @typespec/protobuf
+    // accepts; the value-literal form (`#{ ... }`) is rejected
+    if let Some(pb) = &options.protobuf {
+        lines.push(format!(
+            "@package({{ name: \"{}\" }})",
+            escape_string(&pb.package)
+        ));
+    }
     lines.push(format!("namespace {};", sanitize_identifier(namespace)));
     lines.push(String::new());
 
     // Emit unions first (they may be referenced by models)
     for union in &schema.unions {
-        lines.push(emit_union(union));
+        lines.push(emit_union(union, protobuf));
         lines.push(String::new());
     }
 
     // Emit models
     for model in &schema.models {
-        lines.push(emit_model(model));
+        lines.push(emit_model(model, protobuf));
         lines.push(String::new());
     }
 
@@ -71,7 +131,7 @@ pub fn compiled_to_typespec(schema: &CompiledSchema, namespace: &str) -> String 
     lines.join("\n")
 }
 
-fn emit_union(union: &CompiledUnion) -> String {
+fn emit_union(union: &CompiledUnion, protobuf: bool) -> String {
     let mut lines = Vec::new();
 
     if let Some(desc) = &union.description {
@@ -90,8 +150,15 @@ fn emit_union(union: &CompiledUnion) -> String {
 
     if is_string_enum {
         lines.push(format!("enum {} {{", sanitize_identifier(&union.name)));
-        for variant in &union.variants {
-            if let Some(CompiledType::Literal {
+        for (index, variant) in union.variants.iter().enumerate() {
+            if protobuf {
+                // Protobuf enums require explicit integer members, first == 0
+                lines.push(format!(
+                    "  {}: {},",
+                    sanitize_identifier(&variant.name),
+                    index
+                ));
+            } else if let Some(CompiledType::Literal {
                 value: LiteralValue::String(s),
             }) = &variant.variant_type
             {
@@ -115,7 +182,7 @@ fn emit_union(union: &CompiledUnion) -> String {
             .map(|v| {
                 v.variant_type
                     .as_ref()
-                    .map(type_to_string)
+                    .map(|t| type_to_string(t, false))
                     .unwrap_or_else(|| v.name.clone())
             })
             .collect();
@@ -129,7 +196,7 @@ fn emit_union(union: &CompiledUnion) -> String {
     lines.join("\n")
 }
 
-fn emit_model(model: &CompiledModel) -> String {
+fn emit_model(model: &CompiledModel, protobuf: bool) -> String {
     let mut lines = Vec::new();
 
     if let Some(desc) = &model.description {
@@ -141,10 +208,16 @@ fn emit_model(model: &CompiledModel) -> String {
         lines.push(decorator.to_string());
     }
 
+    // Protobuf requires each message model to be marked
+    if protobuf {
+        lines.push("@message".to_string());
+    }
+
     lines.push(format!("model {} {{", sanitize_identifier(&model.name)));
 
-    for field in &model.fields {
-        lines.push(emit_field(field));
+    // Protobuf field indices are 1-based and follow declaration order
+    for (idx, field) in model.fields.iter().enumerate() {
+        lines.push(emit_field(field, idx + 1, protobuf));
     }
 
     lines.push("}".to_string());
@@ -152,10 +225,15 @@ fn emit_model(model: &CompiledModel) -> String {
     lines.join("\n")
 }
 
-fn emit_field(field: &CompiledField) -> String {
+fn emit_field(field: &CompiledField, index: usize, protobuf: bool) -> String {
     let mut decorators = Vec::new();
 
-    // Add decorators from extensions first
+    // Protobuf field index must come first so the property is a numbered field
+    if protobuf {
+        decorators.push(format!("@field({})", index));
+    }
+
+    // Add decorators from extensions
     for decorator in field.extensions.decorators() {
         decorators.push(decorator.to_string());
     }
@@ -177,7 +255,7 @@ fn emit_field(field: &CompiledField) -> String {
         ""
     };
 
-    let type_str = type_to_string(&field.field_type);
+    let type_str = type_to_string(&field.field_type, protobuf);
 
     format!(
         "  {}{}{}: {};",
@@ -251,14 +329,14 @@ fn emit_operation(op: &odk_schema::CompiledOperation) -> String {
                     "{}{}: {}",
                     sanitize_identifier(&v.name),
                     opt,
-                    type_to_string(&v.variable_type)
+                    type_to_string(&v.variable_type, false)
                 )
             })
             .collect();
         param_strs.join(", ")
     };
 
-    let return_type = type_to_string(&op.output);
+    let return_type = type_to_string(&op.output, false);
 
     lines.push(format!(
         "op {}({}): {};",
@@ -270,10 +348,10 @@ fn emit_operation(op: &odk_schema::CompiledOperation) -> String {
     lines.join("\n")
 }
 
-fn type_to_string(t: &CompiledType) -> String {
+fn type_to_string(t: &CompiledType, protobuf: bool) -> String {
     match t {
-        CompiledType::Scalar { name } => scalar_to_typespec(name),
-        CompiledType::Array { items, .. } => format!("{}[]", type_to_string(items)),
+        CompiledType::Scalar { name } => scalar_to_typespec(name, protobuf),
+        CompiledType::Array { items, .. } => format!("{}[]", type_to_string(items, protobuf)),
         CompiledType::Ref { name } => sanitize_identifier(name),
         CompiledType::Literal { value } => match value {
             LiteralValue::String(s) => format!("\"{}\"", escape_string(s)),
@@ -282,7 +360,7 @@ fn type_to_string(t: &CompiledType) -> String {
         },
         CompiledType::Union { variants } => variants
             .iter()
-            .map(type_to_string)
+            .map(|v| type_to_string(v, protobuf))
             .collect::<Vec<_>>()
             .join(" | "),
         CompiledType::Object { fields } => {
@@ -290,7 +368,12 @@ fn type_to_string(t: &CompiledType) -> String {
                 .iter()
                 .map(|f| {
                     let opt = if f.optional.unwrap_or(false) { "?" } else { "" };
-                    format!("{}{}: {}", f.name, opt, type_to_string(&f.field_type))
+                    format!(
+                        "{}{}: {}",
+                        f.name,
+                        opt,
+                        type_to_string(&f.field_type, protobuf)
+                    )
                 })
                 .collect();
             format!("{{ {} }}", field_strs.join("; "))
@@ -298,7 +381,25 @@ fn type_to_string(t: &CompiledType) -> String {
     }
 }
 
-fn scalar_to_typespec(scalar: &ScalarType) -> String {
+fn scalar_to_typespec(scalar: &ScalarType, protobuf: bool) -> String {
+    // Protobuf has no native temporal, URL, or unknown scalar, so those degrade
+    // to string (RFC 3339 / plain text) to keep protobuf emission turnkey.
+    // bytes and the numeric/bool/string scalars map natively
+    if protobuf {
+        match scalar {
+            ScalarType::Date
+            | ScalarType::Datetime
+            | ScalarType::UtcDateTime
+            | ScalarType::OffsetDateTime
+            | ScalarType::PlainDate
+            | ScalarType::PlainTime
+            | ScalarType::Duration
+            | ScalarType::Url
+            | ScalarType::Unknown => return "string".to_string(),
+            _ => {}
+        }
+    }
+
     match scalar {
         ScalarType::String => "string".to_string(),
         ScalarType::Int32 => "int32".to_string(),
@@ -415,5 +516,207 @@ mod tests {
 
         assert!(tsp.contains("import \"@typespec/http\";"));
         assert!(tsp.contains("import \"@omnidotdev/typespec-drizzle\";"));
+    }
+
+    fn protobuf_schema() -> CompiledSchema {
+        let mut schema = CompiledSchema::new("Blog");
+        let mut post = CompiledModel::new("Post");
+        post.add_field(CompiledField::new("id", CompiledType::int64()));
+        post.add_field(CompiledField::new("title", CompiledType::string()));
+        schema.add_model(post);
+        schema
+    }
+
+    #[test]
+    fn test_protobuf_injects_package_on_namespace() {
+        let schema = protobuf_schema();
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        // The @package decorator must precede the namespace, with the plain
+        // object-literal arg syntax that @typespec/protobuf 0.76 accepts
+        assert!(
+            tsp.contains("@package({ name: \"blog\" })\nnamespace Blog;"),
+            "expected @package decorator before namespace, got:\n{tsp}"
+        );
+    }
+
+    #[test]
+    fn test_protobuf_auto_imports_and_using() {
+        let schema = protobuf_schema();
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        assert!(tsp.contains("import \"@typespec/protobuf\";"));
+        assert!(tsp.contains("using TypeSpec.Protobuf;"));
+    }
+
+    #[test]
+    fn test_protobuf_decorates_models_and_fields() {
+        let schema = protobuf_schema();
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        assert!(tsp.contains("@message\nmodel Post {"), "got:\n{tsp}");
+        // Field indices are 1-based and follow declaration order
+        assert!(tsp.contains("@field(1) id: int64;"), "got:\n{tsp}");
+        assert!(tsp.contains("@field(2) title: string;"), "got:\n{tsp}");
+    }
+
+    #[test]
+    fn test_protobuf_does_not_duplicate_existing_import() {
+        let mut schema = protobuf_schema();
+        schema.add_import("@typespec/protobuf");
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        assert_eq!(
+            tsp.matches("import \"@typespec/protobuf\";").count(),
+            1,
+            "protobuf import must not be duplicated, got:\n{tsp}"
+        );
+    }
+
+    #[test]
+    fn test_emit_options_none_without_protobuf_target() {
+        let emitters = vec![
+            "@typespec/openapi3".to_string(),
+            "@typespec/json-schema".to_string(),
+        ];
+        let opts = emit_options_for(&emitters, "Blog");
+        assert!(opts.protobuf.is_none());
+    }
+
+    #[test]
+    fn test_emit_options_derives_lowercase_package_from_namespace() {
+        let emitters = vec!["@typespec/protobuf".to_string()];
+        let opts = emit_options_for(&emitters, "BlogAPI");
+        let pb = opts.protobuf.expect("protobuf options expected");
+        assert_eq!(pb.package, "blogapi");
+    }
+
+    fn string_enum(name: &str, members: &[&str]) -> CompiledUnion {
+        CompiledUnion {
+            name: name.to_string(),
+            variants: members
+                .iter()
+                .map(|m| odk_schema::CompiledUnionVariant {
+                    name: m.to_string(),
+                    variant_type: Some(CompiledType::Literal {
+                        value: LiteralValue::String(m.to_string()),
+                    }),
+                })
+                .collect(),
+            tag: None,
+            rename_all: None,
+            description: None,
+            extensions: Default::default(),
+            source: None,
+        }
+    }
+
+    #[test]
+    fn test_protobuf_enums_use_integer_values() {
+        let mut schema = CompiledSchema::new("Blog");
+        schema.add_union(string_enum("Status", &["draft", "published"]));
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        // protobuf enums require explicit integer members, first == 0
+        assert!(tsp.contains("enum Status {"), "got:\n{tsp}");
+        assert!(tsp.contains("draft: 0,"), "got:\n{tsp}");
+        assert!(tsp.contains("published: 1,"), "got:\n{tsp}");
+    }
+
+    #[test]
+    fn test_string_enum_keeps_string_form_without_protobuf() {
+        let mut schema = CompiledSchema::new("Blog");
+        schema.add_union(string_enum("Status", &["draft", "published"]));
+
+        let tsp = compiled_to_typespec(&schema, "Blog");
+
+        // Without protobuf, a string enum whose member name equals its value is
+        // emitted as a bare identifier, never an integer
+        assert!(tsp.contains("  draft,"), "got:\n{tsp}");
+        assert!(!tsp.contains("draft: 0"), "got:\n{tsp}");
+    }
+
+    #[test]
+    fn test_protobuf_maps_temporal_scalars_to_string() {
+        let mut schema = CompiledSchema::new("Blog");
+        let mut event = CompiledModel::new("Event");
+        event.add_field(CompiledField::new(
+            "createdAt",
+            CompiledType::Scalar {
+                name: ScalarType::UtcDateTime,
+            },
+        ));
+        schema.add_model(event);
+        let opts = EmitOptions {
+            protobuf: Some(ProtobufOptions {
+                package: "blog".to_string(),
+            }),
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
+
+        // protobuf has no scalar for utcDateTime; it must degrade to string so
+        // the emitter succeeds turnkey
+        assert!(tsp.contains("@field(1) createdAt: string;"), "got:\n{tsp}");
+    }
+
+    #[test]
+    fn test_temporal_scalar_unchanged_without_protobuf() {
+        let mut schema = CompiledSchema::new("Blog");
+        let mut event = CompiledModel::new("Event");
+        event.add_field(CompiledField::new(
+            "createdAt",
+            CompiledType::Scalar {
+                name: ScalarType::UtcDateTime,
+            },
+        ));
+        schema.add_model(event);
+
+        let tsp = compiled_to_typespec(&schema, "Blog");
+
+        assert!(tsp.contains("createdAt: utcDateTime;"), "got:\n{tsp}");
+    }
+
+    #[test]
+    fn test_no_protobuf_decorators_without_option() {
+        let schema = protobuf_schema();
+
+        // The plain wrapper and the explicit no-protobuf option both stay clean
+        let tsp = compiled_to_typespec(&schema, "Blog");
+
+        assert!(!tsp.contains("@package"));
+        assert!(!tsp.contains("@message"));
+        assert!(!tsp.contains("@field("));
+        assert!(!tsp.contains("import \"@typespec/protobuf\";"));
     }
 }
