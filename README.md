@@ -90,6 +90,27 @@ odk/
 └── examples/       # Example schemas
 ```
 
+## Development
+
+### Prerequisites
+
+- [Rust](https://rustup.rs) 1.85+
+- [Bun](https://bun.sh) 1.0+
+
+### Commands
+
+```sh
+cargo build            # Build the CLI and crates
+cargo run -- --help    # Run the CLI
+cargo test             # Run the Rust test suite
+cargo clippy           # Lint the Rust code
+bun run --cwd odk-ts build   # Build the TypeScript SDK
+```
+
+### Releases
+
+Releases are automated with [Changesets](https://github.com/changesets/changesets). Record a change with `bun changeset`, then merge to `master`; the release workflow versions every artifact in lockstep (npm SDK, crates, Python PDK) and publishes them. Never publish by hand.
+
 ## License
 
 The code in this repository is licensed under Apache 2.0, &copy; [Omni LLC](https://omni.dev). See [LICENSE.md](LICENSE.md) for more information.
