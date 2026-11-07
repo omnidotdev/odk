@@ -1,10 +1,7 @@
 {
   "version": "1.0",
   "name": "BlogAPI",
-  "imports": [
-    "@typespec/http",
-    "@omnidotdev/typespec-drizzle"
-  ],
+  "imports": ["@typespec/http", "@omnidotdev/typespec-drizzle"],
   "models": {
     "User": {
       "description": "A blog user account",
@@ -43,12 +40,10 @@
           "description": "User's permission level"
         },
         "createdAt": {
-          "type": "utcDateTime",
-          "decorators": ["@createdAt"]
+          "type": "utcDateTime"
         },
         "updatedAt": {
-          "type": "utcDateTime",
-          "decorators": ["@updatedAt"]
+          "type": "utcDateTime"
         }
       }
     },
@@ -91,7 +86,7 @@
         "authorId": {
           "type": "string",
           "format": "uuid",
-          "decorators": ["@manyToOne(User)"]
+          "decorators": ["@manyToOne"]
         },
         "status": {
           "type": "PostStatus"
@@ -101,12 +96,10 @@
           "optional": true
         },
         "createdAt": {
-          "type": "utcDateTime",
-          "decorators": ["@createdAt"]
+          "type": "utcDateTime"
         },
         "updatedAt": {
-          "type": "utcDateTime",
-          "decorators": ["@updatedAt"]
+          "type": "utcDateTime"
         }
       }
     },
@@ -129,12 +122,12 @@
         "postId": {
           "type": "string",
           "format": "uuid",
-          "decorators": ["@manyToOne(Post)"]
+          "decorators": ["@manyToOne"]
         },
         "authorId": {
           "type": "string",
           "format": "uuid",
-          "decorators": ["@manyToOne(User)"]
+          "decorators": ["@manyToOne"]
         },
         "parentId": {
           "type": "string",
@@ -143,8 +136,7 @@
           "description": "Parent comment ID for nested replies"
         },
         "createdAt": {
-          "type": "utcDateTime",
-          "decorators": ["@createdAt"]
+          "type": "utcDateTime"
         }
       }
     },

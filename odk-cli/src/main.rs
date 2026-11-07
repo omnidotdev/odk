@@ -439,16 +439,24 @@ fn compile_with_typespec(
     });
     fs::write(temp_path.join("package.json"), package_json.to_string())?;
 
-    // Find and symlink node_modules
+    // Reuse an existing node_modules only when it already satisfies every
+    // required package (the emitters plus the schema's declared imports).
+    // Otherwise a schema that declares an import the host project has not
+    // installed (e.g. @omnidotdev/typespec-drizzle) would resolve against an
+    // incomplete node_modules and fail to compile, so fall back to a clean
+    // install from the package.json written above
+    let required: Vec<String> = deps.keys().cloned().collect();
     let search_start = Utf8PathBuf::try_from(std::env::current_dir()?)?;
-    if let Some(node_modules) = find_node_modules(&search_start) {
+    let reusable =
+        find_node_modules(&search_start).filter(|nm| node_modules_has_packages(nm, &required));
+    if let Some(node_modules) = reusable {
         let temp_node_modules = temp_path.join("node_modules");
         #[cfg(unix)]
         std::os::unix::fs::symlink(&node_modules, &temp_node_modules)
-            .with_context(|| format!("Failed to symlink node_modules"))?;
+            .with_context(|| "Failed to symlink node_modules".to_string())?;
         #[cfg(windows)]
         std::os::windows::fs::symlink_dir(&node_modules, &temp_node_modules)
-            .with_context(|| format!("Failed to symlink node_modules"))?;
+            .with_context(|| "Failed to symlink node_modules".to_string())?;
         eprintln!("  Using node_modules from {}", node_modules.display());
     } else {
         eprintln!("  Installing TypeSpec dependencies...");
@@ -548,6 +556,13 @@ fn find_node_modules(start: &Utf8PathBuf) -> Option<PathBuf> {
             return None;
         }
     }
+}
+
+/// Whether an existing node_modules already contains every required package, so
+/// it can be reused instead of running a fresh install. A scoped package name
+/// (`@scope/name`) maps to a nested directory, which `Path::join` handles
+fn node_modules_has_packages(node_modules: &std::path::Path, packages: &[String]) -> bool {
+    packages.iter().all(|pkg| node_modules.join(pkg).is_dir())
 }
 
 /// Init command: create a new ODK project.
@@ -905,8 +920,30 @@ fn cmd_typespec(
 
 #[cfg(test)]
 mod tests {
-    use super::rename_model_stem;
+    use super::{node_modules_has_packages, rename_model_stem};
     use std::collections::BTreeMap;
+
+    #[test]
+    fn node_modules_reused_only_when_all_required_packages_present() {
+        let dir = tempfile::tempdir().unwrap();
+        let nm = dir.path().join("node_modules");
+        std::fs::create_dir_all(nm.join("@typespec/compiler")).unwrap();
+        std::fs::create_dir_all(nm.join("@typespec/openapi3")).unwrap();
+
+        let present = [
+            "@typespec/compiler".to_string(),
+            "@typespec/openapi3".to_string(),
+        ];
+        assert!(node_modules_has_packages(&nm, &present));
+
+        // a declared import missing from the host node_modules must force a
+        // clean install rather than reuse (the Drizzle compile-path bug)
+        let missing = [
+            "@typespec/compiler".to_string(),
+            "@omnidotdev/typespec-drizzle".to_string(),
+        ];
+        assert!(!node_modules_has_packages(&nm, &missing));
+    }
 
     #[test]
     fn out_file_renames_only_the_models_stem() {

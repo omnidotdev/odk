@@ -475,8 +475,10 @@ fn import_to_using_namespace(import: &str) -> Option<&'static str> {
         "@typespec/events" => Some("TypeSpec.Events"),
         "@typespec/streams" => Some("TypeSpec.Streams"),
         "@typespec/sse" => Some("TypeSpec.SSE"),
-        // Emitter-only packages (no decorators to bring into scope)
-        // "@omnidotdev/typespec-drizzle" - emitter only, no namespace
+        // Drizzle ships its decorators (@table/@id/@manyToOne/...) under the
+        // `Drizzle` namespace, so they must be brought into scope for bare
+        // decorator usage to resolve (matches the library's own examples)
+        "@omnidotdev/typespec-drizzle" => Some("Drizzle"),
         _ => None,
     }
 }
@@ -516,6 +518,10 @@ mod tests {
 
         assert!(tsp.contains("import \"@typespec/http\";"));
         assert!(tsp.contains("import \"@omnidotdev/typespec-drizzle\";"));
+        // Imports whose decorators live under a namespace must also be brought
+        // into scope, or bare decorators (@table/@id/...) fail to resolve
+        assert!(tsp.contains("using TypeSpec.Http;"));
+        assert!(tsp.contains("using Drizzle;"));
     }
 
     fn protobuf_schema() -> CompiledSchema {
