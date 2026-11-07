@@ -30,8 +30,8 @@ const User = z.object({
     .optional()
     .describe("Display name shown on posts"),
   role: UserRole.describe("User's permission level"),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 // Define the Post model
@@ -50,9 +50,9 @@ const Post = z.object({
     .describe("Short excerpt for previews"),
   authorId: z.string().uuid(),
   status: PostStatus,
-  publishedAt: z.date().optional(),
-  createdAt: z.date(),
-  updatedAt: z.date(),
+  publishedAt: z.iso.datetime().optional(),
+  createdAt: z.iso.datetime(),
+  updatedAt: z.iso.datetime(),
 });
 
 // Define the Comment model
@@ -66,7 +66,7 @@ const Comment = z.object({
     .uuid()
     .optional()
     .describe("Parent comment ID for nested replies"),
-  createdAt: z.date(),
+  createdAt: z.iso.datetime(),
 });
 
 // Define the Tag model
