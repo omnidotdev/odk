@@ -44,3 +44,57 @@ jobs:
 
       - name: Test
         run: bun test
+
+  rust:
+    name: Rust (build, test, examples)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+          targets: wasm32-unknown-unknown
+
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+
+      # Provides node_modules (incl. odk-ts, built below) so `odk compile`
+      # can resolve the TypeSpec toolchain and @omnidotdev/odk for .ts schemas
+      - name: Install dependencies
+        run: bun install --frozen-lockfile
+
+      - name: Build odk-ts (so @omnidotdev/odk resolves for TS schema compile)
+        run: bun run --cwd odk-ts build
+
+      - name: Format
+        run: cargo fmt --all --check
+
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets
+
+      - name: Test
+        run: cargo test --workspace
+
+      - name: Build CLI
+        run: cargo build --release --bin odk
+
+      # End-to-end smoke test across every input format and both compile
+      # pipelines. This is the coverage whose absence let the pdk build break,
+      # the Drizzle compile path, and the TS schema input ship broken: the
+      # examples are the product's own credibility surface, so a release must
+      # not pass unless they still compile
+      - name: Smoke-test examples
+        run: |
+          set -euo pipefail
+          odk=target/release/odk
+          "$odk" compile examples/blog.odk.yaml -o "$RUNNER_TEMP/smoke-yaml"
+          "$odk" compile examples/blog.odk.ts   -o "$RUNNER_TEMP/smoke-ts"
+          "$odk" compile examples/blog.odk.json -o "$RUNNER_TEMP/smoke-json"
+          "$odk" compile examples/blog.odk.json \
+            -e @omnidotdev/typespec-drizzle -o "$RUNNER_TEMP/smoke-drizzle"
+          "$odk" build examples/blog-plugin-rust
+          "$odk" compile \
+            examples/blog-plugin-rust/target/odk/blog-plugin-rust.wasm \
+            -o "$RUNNER_TEMP/smoke-wasm"
