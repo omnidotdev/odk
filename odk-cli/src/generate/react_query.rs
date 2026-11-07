@@ -26,8 +26,14 @@ fn generate_hooks(schema: &CompiledSchema) -> String {
     let mut lines = Vec::new();
 
     // Collect which hook types we need
-    let has_queries = schema.operations.iter().any(|op| matches!(op.kind, OperationKind::Query));
-    let has_mutations = schema.operations.iter().any(|op| matches!(op.kind, OperationKind::Mutation));
+    let has_queries = schema
+        .operations
+        .iter()
+        .any(|op| matches!(op.kind, OperationKind::Query));
+    let has_mutations = schema
+        .operations
+        .iter()
+        .any(|op| matches!(op.kind, OperationKind::Mutation));
 
     // React Query imports
     let mut rq_imports = Vec::new();
@@ -157,7 +163,9 @@ fn generate_provider() -> String {
     lines.push("export const useODKClient = (): Client => {".to_string());
     lines.push("  const client = useContext(ODKContext);".to_string());
     lines.push("  if (!client) {".to_string());
-    lines.push("    throw new Error(\"useODKClient must be used within an ODKProvider\");".to_string());
+    lines.push(
+        "    throw new Error(\"useODKClient must be used within an ODKProvider\");".to_string(),
+    );
     lines.push("  }".to_string());
     lines.push("  return client;".to_string());
     lines.push("};".to_string());
@@ -169,7 +177,8 @@ fn generate_provider() -> String {
     lines.push("  client: Client;".to_string());
     lines.push("  children: React.ReactNode;".to_string());
     lines.push("}) => (".to_string());
-    lines.push("  <ODKContext.Provider value={client}>{children}</ODKContext.Provider>".to_string());
+    lines
+        .push("  <ODKContext.Provider value={client}>{children}</ODKContext.Provider>".to_string());
     lines.push(");".to_string());
 
     lines.join("\n")
@@ -187,16 +196,26 @@ mod tests {
             name: "GetUser".into(),
             kind: OperationKind::Query,
             input: None,
-            output: CompiledType::Ref { name: "User".into() },
+            output: CompiledType::Ref {
+                name: "User".into(),
+            },
             variables: vec![Variable {
                 name: "id".into(),
-                variable_type: CompiledType::Scalar { name: ScalarType::String },
+                variable_type: CompiledType::Scalar {
+                    name: ScalarType::String,
+                },
                 required: true,
                 default_value: None,
                 description: None,
             }],
             selection: Some(SelectionSet {
-                fields: vec![FieldSelection { name: "id".into(), alias: None, arguments: vec![], selection: None, directives: vec![] }],
+                fields: vec![FieldSelection {
+                    name: "id".into(),
+                    alias: None,
+                    arguments: vec![],
+                    selection: None,
+                    directives: vec![],
+                }],
                 fragment_spreads: vec![],
                 inline_fragments: vec![],
             }),
@@ -209,16 +228,26 @@ mod tests {
             name: "CreatePost".into(),
             kind: OperationKind::Mutation,
             input: None,
-            output: CompiledType::Ref { name: "Post".into() },
+            output: CompiledType::Ref {
+                name: "Post".into(),
+            },
             variables: vec![Variable {
                 name: "input".into(),
-                variable_type: CompiledType::Ref { name: "CreatePostInput".into() },
+                variable_type: CompiledType::Ref {
+                    name: "CreatePostInput".into(),
+                },
                 required: true,
                 default_value: None,
                 description: None,
             }],
             selection: Some(SelectionSet {
-                fields: vec![FieldSelection { name: "id".into(), alias: None, arguments: vec![], selection: None, directives: vec![] }],
+                fields: vec![FieldSelection {
+                    name: "id".into(),
+                    alias: None,
+                    arguments: vec![],
+                    selection: None,
+                    directives: vec![],
+                }],
                 fragment_spreads: vec![],
                 inline_fragments: vec![],
             }),

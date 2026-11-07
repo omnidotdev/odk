@@ -66,10 +66,7 @@ fn generate_mocks(schema: &CompiledSchema) -> String {
             "export const {} = (resolver?: () => {}Result[\"{}\"],) =>",
             mock_name, op.name, root_field
         ));
-        lines.push(format!(
-            "  graphql.{}(\"{}\", () =>",
-            gql_method, op.name
-        ));
+        lines.push(format!("  graphql.{}(\"{}\", () =>", gql_method, op.name));
         lines.push("    HttpResponse.json({".to_string());
         lines.push(format!(
             "      data: {{ {}: resolver?.() ?? {}() }},",
@@ -80,10 +77,7 @@ fn generate_mocks(schema: &CompiledSchema) -> String {
         lines.push(String::new());
 
         // Mock data factory
-        lines.push(format!(
-            "export const {} = (",
-            mock_data_name
-        ));
+        lines.push(format!("export const {} = (", mock_data_name));
         lines.push(format!(
             "  overrides?: Partial<{}Result[\"{}\"]>,",
             op.name, root_field
@@ -111,10 +105,7 @@ fn generate_mocks(schema: &CompiledSchema) -> String {
             "export const {} = (message = \"An error occurred\") =>",
             mock_error_name
         ));
-        lines.push(format!(
-            "  graphql.{}(\"{}\", () =>",
-            gql_method, op.name
-        ));
+        lines.push(format!("  graphql.{}(\"{}\", () =>", gql_method, op.name));
         lines.push("    HttpResponse.json({".to_string());
         lines.push("      errors: [{ message }],".to_string());
         lines.push("    }),".to_string());
@@ -175,10 +166,14 @@ mod tests {
             name: "GetUser".into(),
             kind: OperationKind::Query,
             input: None,
-            output: CompiledType::Ref { name: "User".into() },
+            output: CompiledType::Ref {
+                name: "User".into(),
+            },
             variables: vec![Variable {
                 name: "id".into(),
-                variable_type: CompiledType::Scalar { name: ScalarType::String },
+                variable_type: CompiledType::Scalar {
+                    name: ScalarType::String,
+                },
                 required: true,
                 default_value: None,
                 description: None,
@@ -190,9 +185,27 @@ mod tests {
                     arguments: vec![],
                     selection: Some(SelectionSet {
                         fields: vec![
-                            FieldSelection { name: "id".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
-                            FieldSelection { name: "name".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
-                            FieldSelection { name: "email".into(), alias: None, arguments: vec![], selection: None, directives: vec![] },
+                            FieldSelection {
+                                name: "id".into(),
+                                alias: None,
+                                arguments: vec![],
+                                selection: None,
+                                directives: vec![],
+                            },
+                            FieldSelection {
+                                name: "name".into(),
+                                alias: None,
+                                arguments: vec![],
+                                selection: None,
+                                directives: vec![],
+                            },
+                            FieldSelection {
+                                name: "email".into(),
+                                alias: None,
+                                arguments: vec![],
+                                selection: None,
+                                directives: vec![],
+                            },
                         ],
                         fragment_spreads: vec![],
                         inline_fragments: vec![],

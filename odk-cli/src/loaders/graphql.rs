@@ -3,13 +3,13 @@
 //! Parses GraphQL SDL files (.graphql) into CompiledSchema types and
 //! GraphQL operation documents into CompiledOperations.
 
-use apollo_parser::cst::CstNode;
 use apollo_parser::Parser;
+use apollo_parser::cst::CstNode;
 use odk_schema::{
-    CompiledField, CompiledModel, CompiledOperation, CompiledSchema, CompiledType,
-    CompiledUnion, CompiledUnionVariant, Directive, Extensions, FieldSelection,
-    FragmentDefinition, FragmentSpread, InlineFragment, LiteralValue, OperationKind,
-    ScalarType, SelectionSet, Variable,
+    CompiledField, CompiledModel, CompiledOperation, CompiledSchema, CompiledType, CompiledUnion,
+    CompiledUnionVariant, Directive, Extensions, FieldSelection, FragmentDefinition,
+    FragmentSpread, InlineFragment, LiteralValue, OperationKind, ScalarType, SelectionSet,
+    Variable,
 };
 
 /// Error type for GraphQL loading.
@@ -80,17 +80,27 @@ pub fn map_graphql_type(ty: &apollo_parser::cst::Type) -> (CompiledType, bool) {
                 .name()
                 .map(|n| n.text().to_string())
                 .unwrap_or_default();
-            let compiled = map_graphql_scalar(&name)
-                .unwrap_or_else(|| CompiledType::Ref { name });
+            let compiled = map_graphql_scalar(&name).unwrap_or_else(|| CompiledType::Ref { name });
             // Named type without `!` is nullable in GraphQL
             (compiled, true)
         }
         Type::ListType(list) => {
             if let Some(inner) = list.ty() {
                 let (inner_type, _inner_nullable) = map_graphql_type(&inner);
-                (CompiledType::Array { items: Box::new(inner_type), length: None }, true)
+                (
+                    CompiledType::Array {
+                        items: Box::new(inner_type),
+                        length: None,
+                    },
+                    true,
+                )
             } else {
-                (CompiledType::Scalar { name: ScalarType::Unknown }, true)
+                (
+                    CompiledType::Scalar {
+                        name: ScalarType::Unknown,
+                    },
+                    true,
+                )
             }
         }
         Type::NonNullType(non_null) => {
@@ -99,27 +109,41 @@ pub fn map_graphql_type(ty: &apollo_parser::cst::Type) -> (CompiledType, bool) {
                     .name()
                     .map(|n| n.text().to_string())
                     .unwrap_or_default();
-                let compiled = map_graphql_scalar(&name)
-                    .unwrap_or_else(|| CompiledType::Ref { name });
+                let compiled =
+                    map_graphql_scalar(&name).unwrap_or_else(|| CompiledType::Ref { name });
                 (compiled, false)
             } else if let Some(list) = non_null.list_type() {
                 if let Some(inner) = list.ty() {
                     let (inner_type, _) = map_graphql_type(&inner);
-                    (CompiledType::Array { items: Box::new(inner_type), length: None }, false)
+                    (
+                        CompiledType::Array {
+                            items: Box::new(inner_type),
+                            length: None,
+                        },
+                        false,
+                    )
                 } else {
-                    (CompiledType::Scalar { name: ScalarType::Unknown }, false)
+                    (
+                        CompiledType::Scalar {
+                            name: ScalarType::Unknown,
+                        },
+                        false,
+                    )
                 }
             } else {
-                (CompiledType::Scalar { name: ScalarType::Unknown }, false)
+                (
+                    CompiledType::Scalar {
+                        name: ScalarType::Unknown,
+                    },
+                    false,
+                )
             }
         }
     }
 }
 
 /// Load a GraphQL SDL schema file into a CompiledSchema.
-pub fn load_graphql_schema(
-    path: &std::path::Path,
-) -> Result<CompiledSchema, GraphqlLoadError> {
+pub fn load_graphql_schema(path: &std::path::Path) -> Result<CompiledSchema, GraphqlLoadError> {
     let content = std::fs::read_to_string(path)?;
     let file_name = path.to_string_lossy().to_string();
     parse_graphql_sdl(&content, &file_name)
@@ -177,20 +201,16 @@ pub fn parse_graphql_sdl(
             Definition::ScalarTypeDefinition(sc) => {
                 // Custom scalars become models with a single `value` field
                 // and a `graphql_custom_scalar` extension
-                let name = sc
-                    .name()
-                    .map(|n| n.text().to_string())
-                    .unwrap_or_default();
+                let name = sc.name().map(|n| n.text().to_string()).unwrap_or_default();
                 let description = sc.description().and_then(|d| {
                     d.string_value()
                         .map(|s| s.source_string().trim_matches('"').to_string())
                 });
                 let mut model = CompiledModel::new(&name);
                 model.description = description;
-                model.extensions.add_unknown(
-                    "graphql_custom_scalar".to_string(),
-                    serde_json::json!(true),
-                );
+                model
+                    .extensions
+                    .add_unknown("graphql_custom_scalar".to_string(), serde_json::json!(true));
                 schema.add_model(model);
             }
             // Skip schema definition, directive definitions, extensions for now
@@ -205,10 +225,7 @@ pub fn parse_graphql_sdl(
 fn convert_object_type(
     obj: &apollo_parser::cst::ObjectTypeDefinition,
 ) -> Result<CompiledModel, GraphqlLoadError> {
-    let name = obj
-        .name()
-        .map(|n| n.text().to_string())
-        .unwrap_or_default();
+    let name = obj.name().map(|n| n.text().to_string()).unwrap_or_default();
     let description = obj.description().and_then(|d| {
         d.string_value()
             .map(|s| s.source_string().trim_matches('"').to_string())
@@ -359,10 +376,9 @@ fn convert_field_definition(
             })
             .collect();
         if !args.is_empty() {
-            field.extensions.add_unknown(
-                "graphql_arguments".to_string(),
-                serde_json::json!(args),
-            );
+            field
+                .extensions
+                .add_unknown("graphql_arguments".to_string(), serde_json::json!(args));
         }
     }
 
@@ -373,10 +389,7 @@ fn convert_field_definition(
 fn convert_enum_type(
     en: &apollo_parser::cst::EnumTypeDefinition,
 ) -> Result<CompiledUnion, GraphqlLoadError> {
-    let name = en
-        .name()
-        .map(|n| n.text().to_string())
-        .unwrap_or_default();
+    let name = en.name().map(|n| n.text().to_string()).unwrap_or_default();
     let description = en.description().and_then(|d| {
         d.string_value()
             .map(|s| s.source_string().trim_matches('"').to_string())
@@ -413,10 +426,7 @@ fn convert_enum_type(
 fn convert_union_type(
     un: &apollo_parser::cst::UnionTypeDefinition,
 ) -> Result<CompiledUnion, GraphqlLoadError> {
-    let name = un
-        .name()
-        .map(|n| n.text().to_string())
-        .unwrap_or_default();
+    let name = un.name().map(|n| n.text().to_string()).unwrap_or_default();
     let description = un.description().and_then(|d| {
         d.string_value()
             .map(|s| s.source_string().trim_matches('"').to_string())
@@ -431,9 +441,7 @@ fn convert_union_type(
                 .unwrap_or_default();
             variants.push(CompiledUnionVariant {
                 name: member_name.clone(),
-                variant_type: Some(CompiledType::Ref {
-                    name: member_name,
-                }),
+                variant_type: Some(CompiledType::Ref { name: member_name }),
             });
         }
     }
@@ -466,8 +474,7 @@ pub fn load_graphql_operations(
     for entry in paths {
         let path = entry.map_err(|e| GraphqlLoadError::Io(e.into_error()))?;
         let content = std::fs::read_to_string(&path)?;
-        let (mut ops, mut frags) =
-            parse_graphql_operations(&content, &path.to_string_lossy())?;
+        let (mut ops, mut frags) = parse_graphql_operations(&content, &path.to_string_lossy())?;
         operations.append(&mut ops);
         fragments.append(&mut frags);
     }
@@ -550,10 +557,8 @@ fn convert_operation(
                     .variable()
                     .and_then(|v| v.name())
                     .map(|n| n.text().to_string())?;
-                let (var_type, nullable) = var_def
-                    .ty()
-                    .map(|ty| map_graphql_type(&ty))
-                    .unwrap_or((
+                let (var_type, nullable) =
+                    var_def.ty().map(|ty| map_graphql_type(&ty)).unwrap_or((
                         CompiledType::Scalar {
                             name: ScalarType::Unknown,
                         },
@@ -617,7 +622,9 @@ fn convert_selection_set(sel_set: &apollo_parser::cst::SelectionSet) -> Selectio
                     .name()
                     .map(|n| n.text().to_string())
                     .unwrap_or_default();
-                let alias = field.alias().and_then(|a| a.name().map(|n| n.text().to_string()));
+                let alias = field
+                    .alias()
+                    .and_then(|a| a.name().map(|n| n.text().to_string()));
 
                 let arguments: Vec<(String, CompiledType)> = field
                     .arguments()
@@ -1052,11 +1059,7 @@ mod tests {
         let (ops, _) = parse_graphql_operations(doc, "test.graphql").unwrap();
         let sel = ops[0].selection.as_ref().unwrap();
         let user_sel = sel.fields[0].selection.as_ref().unwrap();
-        let email_field = user_sel
-            .fields
-            .iter()
-            .find(|f| f.name == "email")
-            .unwrap();
+        let email_field = user_sel.fields.iter().find(|f| f.name == "email").unwrap();
         assert_eq!(email_field.directives.len(), 1);
         assert_eq!(email_field.directives[0].name, "include");
     }

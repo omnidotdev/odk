@@ -71,8 +71,7 @@ fn test_full_graphql_pipeline() {
         }
     "#;
 
-    let (ops, frags) =
-        graphql::parse_graphql_operations(ops_doc, "operations.graphql").unwrap();
+    let (ops, frags) = graphql::parse_graphql_operations(ops_doc, "operations.graphql").unwrap();
 
     for op in ops {
         schema.add_operation(op);

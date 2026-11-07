@@ -55,8 +55,12 @@ fn generate_index(schema: &CompiledSchema, config: &McpGenerateConfig) -> String
     let mut lines = Vec::new();
 
     // Imports
-    lines.push("import { McpServer } from \"@modelcontextprotocol/sdk/server/mcp.js\";".to_string());
-    lines.push("import { StdioServerTransport } from \"@modelcontextprotocol/sdk/server/stdio.js\";".to_string());
+    lines
+        .push("import { McpServer } from \"@modelcontextprotocol/sdk/server/mcp.js\";".to_string());
+    lines.push(
+        "import { StdioServerTransport } from \"@modelcontextprotocol/sdk/server/stdio.js\";"
+            .to_string(),
+    );
     lines.push("import { GraphQLClient } from \"graphql-request\";".to_string());
     lines.push("import { z } from \"zod\";".to_string());
     lines.push(String::new());
@@ -66,7 +70,10 @@ fn generate_index(schema: &CompiledSchema, config: &McpGenerateConfig) -> String
     lines.push("const OMNI_USER_TOKEN = process.env.OMNI_USER_TOKEN;".to_string());
     lines.push(String::new());
     lines.push("const gql = new GraphQLClient(API_URL, {".to_string());
-    lines.push("  headers: OMNI_USER_TOKEN ? { authorization: `Bearer ${OMNI_USER_TOKEN}` } : {},".to_string());
+    lines.push(
+        "  headers: OMNI_USER_TOKEN ? { authorization: `Bearer ${OMNI_USER_TOKEN}` } : {},"
+            .to_string(),
+    );
     lines.push("});".to_string());
     lines.push(String::new());
 
@@ -122,9 +129,7 @@ fn generate_index(schema: &CompiledSchema, config: &McpGenerateConfig) -> String
         let zod_params = build_zod_params(&op.variables);
 
         // server.tool() registration
-        lines.push(format!(
-            "server.tool(",
-        ));
+        lines.push(format!("server.tool(",));
         lines.push(format!("  \"{}\",", escape_str(&tool_name)));
         lines.push(format!("  \"{}\",", escape_str(&description)));
 
@@ -201,7 +206,10 @@ fn compiled_type_to_zod(t: &CompiledType) -> String {
             // document still uses the original scalar type name (e.g. UUID).
             "UUID" | "Cursor" | "Datetime" | "DateTime" => "z.string()".to_string(),
             // Input object types (and anything else) stay passthrough objects.
-            _ => format!("z.object({{}}).passthrough().describe(\"{}\")", escape_str(name)),
+            _ => format!(
+                "z.object({{}}).passthrough().describe(\"{}\")",
+                escape_str(name)
+            ),
         },
         CompiledType::Union { variants } => {
             let parts: Vec<String> = variants.iter().map(compiled_type_to_zod).collect();
@@ -439,7 +447,10 @@ mod tests {
         let config = test_mcp_config();
         let output = generate_with_config(&schema, &config);
         let index = &output["index.ts"];
-        assert!(index.contains("submit_feedback"), "should contain renamed tool name");
+        assert!(
+            index.contains("submit_feedback"),
+            "should contain renamed tool name"
+        );
         assert!(index.contains("posts"), "should contain default tool name");
     }
 

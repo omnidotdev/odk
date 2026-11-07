@@ -181,7 +181,10 @@ pub fn reconstruct_operation(
     for frag in fragments {
         if referenced.contains(&frag.name.as_str()) {
             lines.push(String::new());
-            lines.push(format!("fragment {} on {} {{", frag.name, frag.type_condition));
+            lines.push(format!(
+                "fragment {} on {} {{",
+                frag.name, frag.type_condition
+            ));
             emit_selection_set(&mut lines, &frag.selection, 1);
             lines.push("}".to_string());
         }
@@ -265,20 +268,44 @@ fn collect_fragment_refs_inner<'a>(sel: &'a SelectionSet, refs: &mut Vec<&'a str
 #[cfg(test)]
 mod tests {
     use super::*;
-    use odk_schema::{CompiledType, FieldSelection, FragmentDefinition, ScalarType, SelectionSet, Variable};
+    use odk_schema::{
+        CompiledType, FieldSelection, FragmentDefinition, ScalarType, SelectionSet, Variable,
+    };
 
     #[test]
     fn test_scalar_to_ts() {
-        assert_eq!(type_to_ts(&CompiledType::Scalar { name: ScalarType::String }), "string");
-        assert_eq!(type_to_ts(&CompiledType::Scalar { name: ScalarType::Int32 }), "number");
-        assert_eq!(type_to_ts(&CompiledType::Scalar { name: ScalarType::Boolean }), "boolean");
-        assert_eq!(type_to_ts(&CompiledType::Scalar { name: ScalarType::Unknown }), "unknown");
+        assert_eq!(
+            type_to_ts(&CompiledType::Scalar {
+                name: ScalarType::String
+            }),
+            "string"
+        );
+        assert_eq!(
+            type_to_ts(&CompiledType::Scalar {
+                name: ScalarType::Int32
+            }),
+            "number"
+        );
+        assert_eq!(
+            type_to_ts(&CompiledType::Scalar {
+                name: ScalarType::Boolean
+            }),
+            "boolean"
+        );
+        assert_eq!(
+            type_to_ts(&CompiledType::Scalar {
+                name: ScalarType::Unknown
+            }),
+            "unknown"
+        );
     }
 
     #[test]
     fn test_array_to_ts() {
         let arr = CompiledType::Array {
-            items: Box::new(CompiledType::Scalar { name: ScalarType::String }),
+            items: Box::new(CompiledType::Scalar {
+                name: ScalarType::String,
+            }),
             length: None,
         };
         assert_eq!(type_to_ts(&arr), "string[]");
@@ -286,7 +313,12 @@ mod tests {
 
     #[test]
     fn test_ref_to_ts() {
-        assert_eq!(type_to_ts(&CompiledType::Ref { name: "User".into() }), "User");
+        assert_eq!(
+            type_to_ts(&CompiledType::Ref {
+                name: "User".into()
+            }),
+            "User"
+        );
     }
 
     #[test]
@@ -303,7 +335,9 @@ mod tests {
     fn test_variable_to_graphql() {
         let var = Variable {
             name: "id".into(),
-            variable_type: CompiledType::Scalar { name: ScalarType::String },
+            variable_type: CompiledType::Scalar {
+                name: ScalarType::String,
+            },
             required: true,
             default_value: None,
             description: None,
@@ -312,7 +346,9 @@ mod tests {
 
         let opt_var = Variable {
             name: "limit".into(),
-            variable_type: CompiledType::Scalar { name: ScalarType::Int32 },
+            variable_type: CompiledType::Scalar {
+                name: ScalarType::Int32,
+            },
             required: false,
             default_value: None,
             description: None,
@@ -345,7 +381,9 @@ mod tests {
 
         let variables = vec![Variable {
             name: "id".into(),
-            variable_type: CompiledType::Scalar { name: ScalarType::String },
+            variable_type: CompiledType::Scalar {
+                name: ScalarType::String,
+            },
             required: true,
             default_value: None,
             description: None,
@@ -407,13 +445,7 @@ mod tests {
             inline_fragments: vec![],
         });
 
-        let result = reconstruct_operation(
-            "GetUser",
-            &OperationKind::Query,
-            &[],
-            &selection,
-            &[],
-        );
+        let result = reconstruct_operation("GetUser", &OperationKind::Query, &[], &selection, &[]);
 
         assert!(result.contains("user {"));
         assert!(result.contains("    posts {"));

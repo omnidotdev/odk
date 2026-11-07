@@ -58,7 +58,12 @@ impl Target {
                         targets.push(t);
                     }
                 }
-                None => return Err(format!("Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python, typescript, rust", trimmed)),
+                None => {
+                    return Err(format!(
+                        "Unknown target: '{}'. Available: sdk, react-query, msw, mcp, python, typescript, rust",
+                        trimmed
+                    ));
+                }
             }
         }
         Ok(targets)

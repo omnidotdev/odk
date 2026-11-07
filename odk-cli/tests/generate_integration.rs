@@ -112,8 +112,12 @@ fn test_sdk_only() {
 
     let mut schema = graphql::parse_graphql_sdl(sdl, "s.graphql").unwrap();
     let (ops, frags) = graphql::parse_graphql_operations(ops, "o.graphql").unwrap();
-    for op in ops { schema.add_operation(op); }
-    for frag in frags { schema.add_fragment(frag); }
+    for op in ops {
+        schema.add_operation(op);
+    }
+    for frag in frags {
+        schema.add_fragment(frag);
+    }
 
     let output = generate::generate(&schema, &[Target::Sdk], None);
 
@@ -125,7 +129,11 @@ fn test_sdk_only() {
 #[test]
 fn test_empty_operations_no_output() {
     let schema = odk_schema::CompiledSchema::new("Empty");
-    let output = generate::generate(&schema, &[Target::Sdk, Target::ReactQuery, Target::Msw], None);
+    let output = generate::generate(
+        &schema,
+        &[Target::Sdk, Target::ReactQuery, Target::Msw],
+        None,
+    );
     assert!(output.is_empty());
 }
 
@@ -185,8 +193,12 @@ fn test_mcp_generate_pipeline() {
 
     let mut schema = graphql::parse_graphql_sdl(sdl, "schema.graphql").unwrap();
     let (ops, frags) = graphql::parse_graphql_operations(ops_doc, "ops.graphql").unwrap();
-    for op in ops { schema.add_operation(op); }
-    for frag in frags { schema.add_fragment(frag); }
+    for op in ops {
+        schema.add_operation(op);
+    }
+    for frag in frags {
+        schema.add_fragment(frag);
+    }
 
     let mcp_config = McpGenerateConfig {
         name: "backfeed-mcp".into(),
@@ -214,8 +226,14 @@ fn test_mcp_generate_pipeline() {
     let index = &output["index.ts"];
 
     // Tool names from config
-    assert!(index.contains("\"submit_feedback\""), "Missing submit_feedback tool");
-    assert!(index.contains("\"list_feedback\""), "Missing list_feedback tool");
+    assert!(
+        index.contains("\"submit_feedback\""),
+        "Missing submit_feedback tool"
+    );
+    assert!(
+        index.contains("\"list_feedback\""),
+        "Missing list_feedback tool"
+    );
 
     // Description from config
     assert!(index.contains("Submit feedback to a board"));
@@ -238,5 +256,8 @@ fn test_mcp_generate_pipeline() {
     assert!(pkg.contains("@modelcontextprotocol/sdk"));
 
     // Should NOT include CastVote (not in config tools list)
-    assert!(!index.contains("CastVote"), "CastVote should not be included");
+    assert!(
+        !index.contains("CastVote"),
+        "CastVote should not be included"
+    );
 }
