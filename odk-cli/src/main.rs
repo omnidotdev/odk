@@ -527,8 +527,11 @@ fn compile_with_typespec(
 /// Generate emitter-specific options for tspconfig.yaml.
 fn emitter_options(emitter: &str) -> String {
     match emitter {
+        // emitAllModels: false pairs with the `@jsonSchema` decorator the
+        // bridge puts on the user namespace, so only the user's types emit and
+        // an imported library's models (e.g. Drizzle options) do not leak
         "@typespec/json-schema" => format!(
-            "  \"{}\":\n    emitter-output-dir: \"{{output-dir}}\"\n    emitAllModels: true\n    emitAllRefs: true",
+            "  \"{}\":\n    emitter-output-dir: \"{{output-dir}}\"\n    emitAllModels: false\n    emitAllRefs: true",
             emitter
         ),
         "@typespec/openapi3" => format!(

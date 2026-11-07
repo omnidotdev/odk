@@ -31,6 +31,10 @@ pub struct ProtobufOptions {
 pub struct EmitOptions {
     /// Set when `@typespec/protobuf` is a requested emitter
     pub protobuf: Option<ProtobufOptions>,
+    /// Set when `@typespec/json-schema` is a requested emitter. The user
+    /// namespace is then marked `@jsonSchema` so emission is scoped to it and
+    /// an imported library's types (e.g. Drizzle option models) do not leak
+    pub json_schema: bool,
 }
 
 /// Derive emission options from the requested emitters and namespace.
@@ -45,7 +49,11 @@ pub fn emit_options_for(emitters: &[String], namespace: &str) -> EmitOptions {
         .then(|| ProtobufOptions {
             package: sanitize_identifier(namespace).to_lowercase(),
         });
-    EmitOptions { protobuf }
+    let json_schema = emitters.iter().any(|e| e == "@typespec/json-schema");
+    EmitOptions {
+        protobuf,
+        json_schema,
+    }
 }
 
 /// Convert a CompiledSchema to TypeSpec source code.
@@ -67,6 +75,9 @@ pub fn compiled_to_typespec_with_options(
     let mut imports: Vec<String> = schema.imports.clone();
     if protobuf && !imports.iter().any(|i| i == "@typespec/protobuf") {
         imports.push("@typespec/protobuf".to_string());
+    }
+    if options.json_schema && !imports.iter().any(|i| i == "@typespec/json-schema") {
+        imports.push("@typespec/json-schema".to_string());
     }
 
     // Emit imports (must come first)
@@ -97,6 +108,13 @@ pub fn compiled_to_typespec_with_options(
             "@package({{ name: \"{}\" }})",
             escape_string(&pb.package)
         ));
+    }
+    // Scope JSON Schema emission to this namespace (paired with
+    // emitAllModels: false), so imported libraries' types do not leak.
+    // Fully qualified to avoid needing `using TypeSpec.JsonSchema`, whose
+    // decorators (e.g. `id`) would collide with an imported library's
+    if options.json_schema {
+        lines.push("@TypeSpec.JsonSchema.jsonSchema".to_string());
     }
     lines.push(format!("namespace {};", sanitize_identifier(namespace)));
     lines.push(String::new());
@@ -468,7 +486,10 @@ fn import_to_using_namespace(import: &str) -> Option<&'static str> {
         "@typespec/rest" => Some("TypeSpec.Rest"),
         "@typespec/openapi" => Some("TypeSpec.OpenAPI"),
         "@typespec/openapi3" => Some("TypeSpec.OpenAPI"),
-        "@typespec/json-schema" => Some("TypeSpec.JsonSchema"),
+        // @typespec/json-schema is intentionally absent: the bridge references
+        // its one decorator fully-qualified (@TypeSpec.JsonSchema.jsonSchema) on
+        // the namespace, so bringing the whole namespace into scope with `using`
+        // would only risk collisions (e.g. its `id` vs Drizzle's `id`)
         "@typespec/protobuf" => Some("TypeSpec.Protobuf"),
         "@typespec/versioning" => Some("TypeSpec.Versioning"),
         "@typespec/xml" => Some("TypeSpec.Xml"),
@@ -524,6 +545,26 @@ mod tests {
         assert!(tsp.contains("using Drizzle;"));
     }
 
+    #[test]
+    fn json_schema_target_scopes_emission_to_the_namespace() {
+        let mut schema = CompiledSchema::new("TestAPI");
+        schema.add_model(CompiledModel::new("User"));
+        let opts = EmitOptions {
+            json_schema: true,
+            ..Default::default()
+        };
+
+        let tsp = compiled_to_typespec_with_options(&schema, "TestAPI", &opts);
+
+        assert!(tsp.contains("import \"@typespec/json-schema\";"));
+        // the namespace is marked for emission with the fully-qualified
+        // decorator (paired with emitAllModels: false) so only the user's
+        // types emit and an imported library's models do not leak
+        assert!(tsp.contains("@TypeSpec.JsonSchema.jsonSchema"));
+        // never via `using`, which would collide with a library's decorators
+        assert!(!tsp.contains("using TypeSpec.JsonSchema;"));
+    }
+
     fn protobuf_schema() -> CompiledSchema {
         let mut schema = CompiledSchema::new("Blog");
         let mut post = CompiledModel::new("Post");
@@ -540,6 +581,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
@@ -559,6 +601,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
@@ -574,6 +617,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
@@ -592,6 +636,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
@@ -649,6 +694,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
@@ -687,6 +733,7 @@ mod tests {
             protobuf: Some(ProtobufOptions {
                 package: "blog".to_string(),
             }),
+            ..Default::default()
         };
 
         let tsp = compiled_to_typespec_with_options(&schema, "Blog", &opts);
