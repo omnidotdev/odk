@@ -4,10 +4,10 @@
  * This example demonstrates defining a blog API schema using ODK's TypeScript SDK
  * with Zod for schema validation.
  *
- * Run with: bun run examples/blog.odk.ts
+ * Compile with: odk compile examples/blog.odk.ts -o generated/
  */
 
-import { odk } from "../odk-ts/src/index.js";
+import { odk } from "@omnidotdev/odk";
 import { z } from "zod";
 
 // Define enums as Zod enums
@@ -43,7 +43,11 @@ const Post = z.object({
     .regex(/^[a-z0-9-]+$/)
     .describe("URL-friendly slug"),
   content: z.string().describe("Post content in Markdown"),
-  excerpt: z.string().max(500).optional().describe("Short excerpt for previews"),
+  excerpt: z
+    .string()
+    .max(500)
+    .optional()
+    .describe("Short excerpt for previews"),
   authorId: z.string().uuid(),
   status: PostStatus,
   publishedAt: z.date().optional(),
@@ -84,9 +88,9 @@ const schema = odk.schema(
     PostStatus,
   },
   {
-    imports: ["@typespec/http", "@omnidotdev/typespec-drizzle"],
+    imports: ["@typespec/http"],
     description: "Blog API with users, posts, comments, and tags",
-  }
+  },
 );
 
 // Add raw TypeSpec for API routes (escape hatch for things ODK doesn't model)
@@ -119,23 +123,10 @@ odk.raw(
     }
   }
 `,
-  "API route definitions"
+  "API route definitions",
 );
 
-// Output options:
-
-// 1. Get TypeSpec source code
-const typespec = odk.toTypeSpec(schema);
-console.log("=== Generated TypeSpec ===");
-console.log(typespec);
-
-// 2. Get JSON for Rust CLI
-const json = odk.toJSON(schema);
-console.log("\n=== Compiled Schema JSON ===");
-console.log(json);
-
-// 3. Emit to targets (requires tspconfig.yaml)
-// await odk.emit(schema, {
-//   targets: ["@typespec/openapi3", "@typespec/protobuf"],
-//   outDir: "./generated",
-// });
+// Export the schema so `odk compile blog.odk.ts` can load and compile it. The
+// CLI serializes this default export's compiled IR, so the module must not
+// print to stdout itself
+export default schema;

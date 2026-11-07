@@ -19,7 +19,6 @@ mod extism_host;
 mod source_map;
 mod templates;
 mod ts_executor;
-mod ts_schema_adapter;
 mod typespec_bridge;
 
 use odk_cli::loaders;
@@ -239,8 +238,7 @@ fn load_schema(input: &Utf8PathBuf) -> Result<CompiledSchema> {
         "ts" => {
             // TypeScript schema via bun + odk-ts
             eprintln!("  Compiling TypeScript schema via bun...");
-            let ts_schema = ts_executor::compile_ts_schema(input)?;
-            Ok(ts_schema.to_compiled_schema())
+            ts_executor::compile_ts_schema(input)
         }
         "wasm" => {
             // WASM plugin via Extism

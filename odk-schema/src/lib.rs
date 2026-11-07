@@ -48,8 +48,9 @@ pub struct CompiledSchema {
     /// Fragment definitions used by operations
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub fragments: Vec<FragmentDefinition>,
-    /// Raw TypeSpec blocks to pass through verbatim
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    /// Raw TypeSpec blocks to pass through verbatim. The `rawBlocks` alias
+    /// accepts the camelCase key the TypeScript SDK (`odk.toJSON`) emits
+    #[serde(default, alias = "rawBlocks", skip_serializing_if = "Vec::is_empty")]
     pub raw_blocks: Vec<RawTypeSpecBlock>,
     /// TypeSpec imports required by this schema
     #[serde(default, skip_serializing_if = "Vec::is_empty")]

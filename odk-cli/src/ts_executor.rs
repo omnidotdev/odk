@@ -5,24 +5,27 @@
 
 use anyhow::{Context, Result, bail};
 use camino::Utf8Path;
+use odk_schema::CompiledSchema;
 use std::process::Command;
 
-use crate::ts_schema_adapter::TsCompiledSchema;
-
-/// Execute a TypeScript schema file and return the compiled schema in TS format.
+/// Execute a TypeScript schema file and return the compiled schema.
 ///
 /// This spawns a bun subprocess that:
-/// 1. Imports the schema file
-/// 2. Compiles it using the ODK TypeScript library
-/// 3. Outputs JSON to stdout
-pub fn compile_ts_schema(schema_path: &Utf8Path) -> Result<TsCompiledSchema> {
+/// 1. Imports the schema file (which default-exports an `odk.schema(...)` value)
+/// 2. Serializes its compiled IR to stdout via `odk.toJSON`
+/// 3. Parses that JSON into the canonical `CompiledSchema`
+pub fn compile_ts_schema(schema_path: &Utf8Path) -> Result<CompiledSchema> {
     let schema_path = schema_path
         .canonicalize_utf8()
         .context("Failed to resolve schema path")?;
 
-    // Get ODK TS path from environment or use default
-    let odk_ts_path = std::env::var("ODK_TS_PATH")
-        .unwrap_or_else(|_| "/home/brian/projects/omni/odk-ts".to_string());
+    // Resolve the ODK TypeScript library. By default it is imported as the
+    // published package (`@omnidotdev/odk`), resolved from the project's
+    // node_modules like any other dependency. ODK_TS_PATH overrides this with a
+    // local checkout path for ODK's own development
+    let odk_ts_import = std::env::var("ODK_TS_PATH")
+        .map(|path| format!("{path}/src/index.ts"))
+        .unwrap_or_else(|_| "@omnidotdev/odk".to_string());
 
     // Check if bun is available
     if which::which("bun").is_err() {
@@ -32,15 +35,15 @@ pub fn compile_ts_schema(schema_path: &Utf8Path) -> Result<TsCompiledSchema> {
         );
     }
 
-    // Build the inline script to execute
+    // The schema module default-exports an `odk.schema(...)` value; serialize
+    // its compiled IR to stdout for the Rust CLI to consume. Only the JSON is
+    // written, so a schema file must not print to stdout itself
     let script = format!(
         r#"
-        import schema from "{}";
-        import {{ compile }} from "{}/src/index.ts";
-        const compiled = await compile(schema);
-        console.log(JSON.stringify(compiled));
+        import schema from "{schema_path}";
+        import {{ odk }} from "{odk_ts_import}";
+        process.stdout.write(odk.toJSON(schema));
         "#,
-        schema_path, odk_ts_path
     );
 
     let output = Command::new("bun")
@@ -56,7 +59,7 @@ pub fn compile_ts_schema(schema_path: &Utf8Path) -> Result<TsCompiledSchema> {
 
     let stdout = String::from_utf8(output.stdout).context("Invalid UTF-8 in bun output")?;
 
-    let schema: TsCompiledSchema =
+    let schema: CompiledSchema =
         serde_json::from_str(&stdout).context("Failed to parse compiled schema JSON")?;
 
     Ok(schema)
