@@ -91,9 +91,7 @@ pub fn string_enum(name: &str, variants: &[&str]) -> odk_schema::CompiledUnion {
                 }),
             })
             .collect(),
-        description: None,
-        extensions: Default::default(),
-        source: None,
+        ..Default::default()
     }
 }
 
