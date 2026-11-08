@@ -3,6 +3,9 @@ name: Release 🏗️
 on:
   push:
     branches: [master]
+  # Allow a manual kick-off (e.g. the first release, once Actions is enabled on
+  # the repo), so opening the version-packages PR does not require a dummy push
+  workflow_dispatch:
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
