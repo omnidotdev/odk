@@ -6,6 +6,11 @@ on:
   # Allow a manual kick-off (e.g. the first release, once Actions is enabled on
   # the repo), so opening the version-packages PR does not require a dummy push
   workflow_dispatch:
+    inputs:
+      crates_only:
+        description: "Publish only the crates to crates.io (recovery when npm is already published for this version)"
+        type: boolean
+        default: false
 
 concurrency: ${{ github.workflow }}-${{ github.ref }}
 
@@ -59,11 +64,11 @@ jobs:
       # Everything below publishes the SAME version to the other registries, and
       # only runs on the push where a new version was actually published to npm
       - name: Set up Rust
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || github.event.inputs.crates_only == 'true'
         uses: dtolnay/rust-toolchain@stable
 
       - name: Publish crates to crates.io
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' || github.event.inputs.crates_only == 'true'
         env:
           CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
         run: |
