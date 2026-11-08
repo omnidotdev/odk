@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 description = "Blog API schema as an ODK WASM plugin"
 license = "Apache-2.0"
+# example crate, never published to crates.io (the release workflow publishes
+# only odk-schema, odk-cli, and odk-pdk)
+publish = false
 
 [lib]
 crate-type = ["cdylib"]
