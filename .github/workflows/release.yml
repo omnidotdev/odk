@@ -76,21 +76,28 @@ jobs:
             fi
           done
 
+      # The Python PDK publishes to PyPI via OIDC trusted publishing, which needs
+      # a one-time trusted-publisher record created on pypi.org for this repo +
+      # workflow. Until that exists the three steps below stay off, gated on the
+      # `PUBLISH_PYPI` repository variable, so the first release ships npm + the
+      # crates without blocking on PyPI. To enable: create the trusted publisher
+      # on pypi.org (owner omnidotdev, repo odk, workflow release.yml), then set
+      # the repo variable PUBLISH_PYPI to `true`
       - name: Set up Python
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' && vars.PUBLISH_PYPI == 'true'
         uses: actions/setup-python@v5
         with:
           python-version: "3.12"
 
       - name: Build Python PDK
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' && vars.PUBLISH_PYPI == 'true'
         run: |
           set -euo pipefail
           python -m pip install --upgrade build
           python -m build odk-pdk-py --outdir odk-pdk-py/dist
 
       - name: Publish Python PDK to PyPI
-        if: steps.changesets.outputs.published == 'true'
+        if: steps.changesets.outputs.published == 'true' && vars.PUBLISH_PYPI == 'true'
         uses: pypa/gh-action-pypi-publish@release/v1
         with:
           packages-dir: odk-pdk-py/dist
