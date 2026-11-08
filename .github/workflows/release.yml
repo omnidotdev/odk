@@ -51,7 +51,10 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
-          NPM_CONFIG_PROVENANCE: "true"
+          # npm provenance requires a public source repository; while the repo is
+          # private it fails with E422. Gate it on NPM_PROVENANCE and set that
+          # variable to `true` once the repo is public to turn attestation back on
+          NPM_CONFIG_PROVENANCE: ${{ vars.NPM_PROVENANCE == 'true' }}
 
       # Everything below publishes the SAME version to the other registries, and
       # only runs on the push where a new version was actually published to npm
