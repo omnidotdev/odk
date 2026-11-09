@@ -91,12 +91,16 @@ jobs:
 
       # The Python PDK publishes to the Omni-native Manifold registry (the
       # canonical home for ODK artifacts), not PyPI. The three steps below stay
-      # off until Manifold is ready, gated on the `PUBLISH_PYTHON` repository
-      # variable, so a release ships npm + the crates without blocking on it. To
-      # enable: ensure the `omni` namespace + a write token exist on Manifold and
-      # the odk-pdk repository is public, add the MANIFOLD_TOKEN secret, then set
-      # the repo variable PUBLISH_PYTHON to `true`. Users then install with
-      # `pip install odk-pdk --index-url https://manifold.omni.dev/pypi/omni/simple/`
+      # off until the trusted-publisher binding is live, gated on the
+      # `PUBLISH_PYTHON` repository variable, so a release ships npm + the crates
+      # without blocking on it. No stored secret is needed: the publish step
+      # mints an ephemeral Manifold token via GitHub Actions OIDC (trusted
+      # publishing), authorized by the `manifold:oidcTrustedPublishers` binding
+      # in infra for subject `repo:omnidotdev/odk:ref:refs/heads/master` on the
+      # `omnidotdev` namespace. To enable: apply that infra binding and make the
+      # omnidotdev/odk-pdk repository public on Manifold, then set the repo
+      # variable PUBLISH_PYTHON to `true`. Users then install with
+      # `pip install odk-pdk --index-url https://api.manifold.omni.dev/pypi/omnidotdev/simple/`
       - name: Set up Python
         if: steps.changesets.outputs.published == 'true' && vars.PUBLISH_PYTHON == 'true'
         uses: actions/setup-python@v5
@@ -113,12 +117,26 @@ jobs:
       - name: Publish Python PDK to Manifold
         if: steps.changesets.outputs.published == 'true' && vars.PUBLISH_PYTHON == 'true'
         env:
-          MANIFOLD_TOKEN: ${{ secrets.MANIFOLD_TOKEN }}
+          MANIFOLD_API: https://api.manifold.omni.dev
         run: |
           set -euo pipefail
+          # Mint an ephemeral Manifold publish token via GitHub Actions OIDC
+          # (trusted publishing); nothing durable is stored. Requires the
+          # `id-token: write` permission (set above) and the trusted-publisher
+          # binding in infra authorizing this repo's master workflow.
+          oidc_jwt="$(curl -fsS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=manifold" \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r .value)"
+          mf_token="$(curl -fsS -X POST "${MANIFOLD_API}/api/oidc/token" \
+            -H "authorization: Bearer ${oidc_jwt}" \
+            -H "content-type: application/json" \
+            -d '{"namespace":"omnidotdev","scope":"write"}' | jq -r .plaintextToken)"
+          if [ -z "${mf_token}" ] || [ "${mf_token}" = "null" ]; then
+            echo "failed to mint Manifold OIDC publish token" >&2
+            exit 1
+          fi
           python -m twine upload \
-            --repository-url https://manifold.omni.dev/pypi/omni/ \
-            --username __token__ --password "${MANIFOLD_TOKEN}" \
+            --repository-url "${MANIFOLD_API}/pypi/omnidotdev/" \
+            --username __token__ --password "${mf_token}" \
             odk-pdk-py/dist/*
 
       # Manifold mirror (dogfood + funnel): publishes the same npm + Cargo
