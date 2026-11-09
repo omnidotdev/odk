@@ -139,24 +139,48 @@ jobs:
             --username __token__ --password "${mf_token}" \
             odk-pdk-py/dist/*
 
-      # Manifold mirror (dogfood + funnel): publishes the same npm + Cargo
-      # artifacts to the Omni-native registry under the `omni` namespace.
-      # TODO(launch): confirm the Manifold npm + Cargo registry URLs and add the
-      # MANIFOLD_TOKEN secret, then enable the commands below. Kept inert so a
-      # public release never blocks on the mirror
-      - name: Mirror to Manifold (npm + Cargo)
+      # Manifold mirror (dogfood): also publish the same npm package + crates to
+      # the Omni-native Manifold registry under `omnidotdev`, via the same OIDC
+      # trusted-publishing path as the Python PDK (no stored secret). The
+      # canonical registries stay npmjs + crates.io, so this is NON-BLOCKING:
+      # a mirror hiccup must never fail a release.
+      - name: Mirror npm + crates to Manifold
         if: steps.changesets.outputs.published == 'true'
+        continue-on-error: true
         env:
-          MANIFOLD_TOKEN: ${{ secrets.MANIFOLD_TOKEN }}
-          MANIFOLD_NPM_REGISTRY: ${{ vars.MANIFOLD_NPM_REGISTRY }}
-          MANIFOLD_CARGO_REGISTRY: ${{ vars.MANIFOLD_CARGO_REGISTRY }}
+          MANIFOLD_API: https://api.manifold.omni.dev
+          NPM_CONFIG_PROVENANCE: "false"
         run: |
-          if [ -z "${MANIFOLD_NPM_REGISTRY:-}" ] || [ -z "${MANIFOLD_TOKEN:-}" ]; then
-            echo "Manifold mirror not configured (MANIFOLD_NPM_REGISTRY / MANIFOLD_TOKEN unset); skipping"
-            exit 0
+          set -euo pipefail
+          oidc_jwt="$(curl -fsS "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=manifold" \
+            -H "Authorization: Bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" | jq -r .value)"
+          mf_token="$(curl -fsS -X POST "${MANIFOLD_API}/api/oidc/token" \
+            -H "authorization: Bearer ${oidc_jwt}" \
+            -H "content-type: application/json" \
+            -d '{"namespace":"omnidotdev","scope":"write"}' | jq -r .plaintextToken)"
+          if [ -z "${mf_token}" ] || [ "${mf_token}" = "null" ]; then
+            echo "failed to mint Manifold OIDC token" >&2
+            exit 1
           fi
-          # npm mirror: same package name, different registry
-          #   (cd odk-ts && npm publish --registry "$MANIFOLD_NPM_REGISTRY")
-          # cargo mirror:
-          #   cargo publish --registry manifold -p odk-schema ... (ordered)
-          echo "Manifold mirror configured; wire the publish commands once the registry URLs are confirmed"
+          npm_host="${MANIFOLD_API#https://}"
+
+          # npm: mirror @omnidotdev/odk to the Manifold npm registry
+          ( cd odk-ts && npm publish \
+              --registry "${MANIFOLD_API}/npm/" \
+              "--//${npm_host}/npm/:_authToken=${mf_token}" )
+
+          # cargo: mirror the crates (odk-schema first; dependents retry while
+          # the Manifold sparse index catches up). Inter-crate deps carry a
+          # version and resolve from crates.io, always available to an alt registry.
+          mkdir -p ~/.cargo
+          printf '\n[registries.manifold]\nindex = "sparse+%s/cargo/omnidotdev/"\n' \
+            "${MANIFOLD_API}" >> ~/.cargo/config.toml
+          export CARGO_REGISTRIES_MANIFOLD_TOKEN="${mf_token}"
+          cargo publish --registry manifold -p odk-schema
+          for crate in odk-cli odk-pdk; do
+            for attempt in 1 2 3 4 5 6; do
+              if cargo publish --registry manifold -p "$crate"; then break; fi
+              echo "waiting for Manifold index (attempt $attempt)..."
+              sleep 20
+            done
+          done
