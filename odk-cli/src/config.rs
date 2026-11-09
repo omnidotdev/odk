@@ -166,7 +166,7 @@ fn load_ts_config(path: &Utf8PathBuf) -> Result<OdkConfig> {
 fn load_yaml_config(path: &Utf8PathBuf) -> Result<OdkConfig> {
     let content = fs::read_to_string(path).with_context(|| format!("Failed to read {}", path))?;
 
-    serde_yaml::from_str(&content)
+    serde_norway::from_str(&content)
         .with_context(|| format!("Failed to parse YAML config from {}", path))
 }
 

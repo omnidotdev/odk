@@ -44,7 +44,7 @@ use std::path::Path;
 #[derive(Debug)]
 pub enum YamlLoadError {
     Io(std::io::Error),
-    Parse(serde_yaml::Error),
+    Parse(serde_norway::Error),
     Validation(String),
 }
 
@@ -66,8 +66,8 @@ impl From<std::io::Error> for YamlLoadError {
     }
 }
 
-impl From<serde_yaml::Error> for YamlLoadError {
-    fn from(e: serde_yaml::Error) -> Self {
+impl From<serde_norway::Error> for YamlLoadError {
+    fn from(e: serde_norway::Error) -> Self {
         YamlLoadError::Parse(e)
     }
 }
@@ -196,7 +196,7 @@ pub fn load_yaml_schema(path: &Path) -> Result<CompiledSchema, YamlLoadError> {
         serde_json::from_str(&content)
             .map_err(|e| YamlLoadError::Validation(format!("JSON parse error: {}", e)))?
     } else {
-        serde_yaml::from_str(&content)?
+        serde_norway::from_str(&content)?
     };
 
     convert_yaml_to_compiled(yaml_schema, &file_name)
@@ -204,7 +204,7 @@ pub fn load_yaml_schema(path: &Path) -> Result<CompiledSchema, YamlLoadError> {
 
 /// Load a schema from a YAML string.
 pub fn load_yaml_string(content: &str, file_name: &str) -> Result<CompiledSchema, YamlLoadError> {
-    let yaml_schema: YamlSchema = serde_yaml::from_str(content)?;
+    let yaml_schema: YamlSchema = serde_norway::from_str(content)?;
     convert_yaml_to_compiled(yaml_schema, file_name)
 }
 
