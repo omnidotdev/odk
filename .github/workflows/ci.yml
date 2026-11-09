@@ -104,3 +104,20 @@ jobs:
           "$odk" compile \
             examples/blog-plugin-rust/target/odk/blog-plugin-rust.wasm \
             -o "$RUNNER_TEMP/smoke-wasm"
+
+  audit:
+    name: Security audit
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-audit
+
+      # Fails on RUSTSEC vulnerabilities (not on unmaintained-only warnings),
+      # so a new advisory in the dependency tree blocks the build
+      - name: Audit dependencies
+        run: cargo audit
