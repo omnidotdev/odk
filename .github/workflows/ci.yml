@@ -23,6 +23,9 @@ jobs:
       - name: Lint
         run: bun check
 
+      - name: Build odk-ts (so @omnidotdev/odk resolves for the TS examples)
+        run: bun run --cwd odk-ts build
+
       - name: Type check
         run: bunx tsc --noEmit
 
