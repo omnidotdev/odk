@@ -173,7 +173,7 @@ jobs:
           # the Manifold sparse index catches up). Inter-crate deps carry a
           # version and resolve from crates.io, always available to an alt registry.
           mkdir -p ~/.cargo
-          printf '\n[registries.manifold]\nindex = "sparse+%s/cargo/omnidotdev/"\n' \
+          printf '\n[registries.manifold]\nindex = "sparse+%s/cargo/omnidotdev/index/"\n' \
             "${MANIFOLD_API}" >> ~/.cargo/config.toml
           export CARGO_REGISTRIES_MANIFOLD_TOKEN="${mf_token}"
           cargo publish --registry manifold -p odk-schema
