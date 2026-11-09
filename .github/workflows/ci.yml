@@ -91,6 +91,9 @@ jobs:
       - name: Smoke-test examples
         run: |
           set -euo pipefail
+          # The odk CLI shells out to `tsp` (@typespec/compiler); bun install
+          # provides it in node_modules/.bin, which is not on PATH by default
+          export PATH="$PWD/node_modules/.bin:$PATH"
           odk=target/release/odk
           "$odk" compile examples/blog.odk.yaml -o "$RUNNER_TEMP/smoke-yaml"
           "$odk" compile examples/blog.odk.ts   -o "$RUNNER_TEMP/smoke-ts"
