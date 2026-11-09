@@ -7,8 +7,9 @@
  * 3. Emit to OpenAPI (and other targets)
  */
 
-import { odk } from "../src/index.js";
 import { type } from "arktype";
+
+import { odk } from "../src/index.js";
 
 // ============ Schema Definitions ============
 

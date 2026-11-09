@@ -11,8 +11,9 @@ const knipConfig: KnipConfig = {
   workspaces: {
     ".": {},
     "odk-ts": {
+      entry: ["src/**/*.test.ts"],
       includeEntryExports: false,
-      ignoreDependencies: ["arktype", "zod", "@valibot/to-json-schema"],
+      ignoreDependencies: ["arktype", "@valibot/to-json-schema"],
     },
   },
 };

@@ -57,13 +57,14 @@ Examples:
 }
 
 async function compileCommand(args: string[]) {
-  if (args.length === 0) {
+  const schemaArg = args[0];
+  if (!schemaArg) {
     console.error("Error: No schema file specified");
     console.error("Usage: odk compile <schema.ts>");
     process.exit(1);
   }
 
-  const schemaPath = resolve(args[0]!);
+  const schemaPath = resolve(schemaArg);
   let outDir = "./generated";
   let targets: string[] = [];
 

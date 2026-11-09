@@ -32,6 +32,16 @@
       }
     }
   },
+  "overrides": [
+    {
+      "includes": ["odk-ts/examples/**"],
+      "linter": {
+        "rules": {
+          "suspicious": { "noConsole": "off" }
+        }
+      }
+    }
+  ],
   "assist": {
     "actions": {
       "source": {

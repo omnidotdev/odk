@@ -4,9 +4,11 @@
  * This example tests emitting to OpenAPI via TypeSpec.
  */
 
-import { odk } from "../src/index.js";
-import { z } from "zod";
 import { mkdir } from "node:fs/promises";
+
+import { z } from "zod";
+
+import { odk } from "../src/index.js";
 
 // Simple schema for testing
 const UserRole = z.enum(["admin", "user", "guest"]);

@@ -6,11 +6,11 @@
  */
 
 import type {
-  CompiledSchema,
-  CompiledModel,
-  CompiledUnion,
   CompiledField,
+  CompiledModel,
+  CompiledSchema,
   CompiledType,
+  CompiledUnion,
 } from "./compile.js";
 
 export interface EmitOptions {
@@ -155,7 +155,7 @@ function emitField(field: CompiledField): string {
     }
   }
 
-  const decoratorStr = decorators.length > 0 ? decorators.join(" ") + " " : "";
+  const decoratorStr = decorators.length > 0 ? `${decorators.join(" ")} ` : "";
   const optionalMark = field.optional ? "?" : "";
   const typeStr = typeToString(field.type);
   const fieldName = sanitizeIdentifier(field.name);
@@ -178,7 +178,7 @@ function typeToString(type: CompiledType): string {
       return String(type.value);
     case "union":
       return type.variants.map(typeToString).join(" | ");
-    case "object":
+    case "object": {
       const fields = type.fields
         .map((f) => {
           const opt = f.optional ? "?" : "";
@@ -186,6 +186,7 @@ function typeToString(type: CompiledType): string {
         })
         .join("; ");
       return `{ ${fields} }`;
+    }
     default:
       return "unknown";
   }
@@ -221,7 +222,7 @@ function sanitizeIdentifier(name: string): string {
   let sanitized = name.replace(/[^A-Za-z0-9_]/g, "_");
   // Ensure it doesn't start with a number
   if (/^[0-9]/.test(sanitized)) {
-    sanitized = "_" + sanitized;
+    sanitized = `_${sanitized}`;
   }
   return sanitized || "_";
 }
@@ -330,6 +331,7 @@ ${targets.map((t) => `  "${t}":\n    output-dir: "${absoluteOutDir}"`).join("\n"
       }
     }
 
+    // biome-ignore lint/suspicious/noConsole: intentional emit-completion notice for CLI output
     console.log(`Emitted to ${absoluteOutDir}`);
   } finally {
     // Cleanup temp files

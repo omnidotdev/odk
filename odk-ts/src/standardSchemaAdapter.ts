@@ -5,21 +5,18 @@
  * to ODK's CompiledSchema IR format.
  */
 
-import type { StandardSchemaV1 } from "@standard-schema/spec";
+import { extractJsonSchema } from "./jsonSchemaExtract.js";
+
 import type {
-  CompiledSchema,
-  CompiledModel,
-  CompiledUnion,
   CompiledField,
+  CompiledModel,
+  CompiledSchema,
   CompiledType,
+  CompiledUnion,
   FieldConstraints,
   ScalarType,
 } from "./compile.js";
-import {
-  extractJsonSchema,
-  getSchemaLibrary,
-  type JSONSchema,
-} from "./jsonSchemaExtract.js";
+import type { JSONSchema } from "./jsonSchemaExtract.js";
 
 export interface AdapterOptions {
   /** Suppress warnings about non-serializable constraints */
@@ -40,8 +37,6 @@ export function standardSchemaToCompiled(
   const processedDefs = new Set<string>();
 
   for (const [typeName, schema] of Object.entries(types)) {
-    const library = getSchemaLibrary(schema);
-
     // Check for non-serializable constraints
     checkSerializability(schema, typeName, warnings);
 
@@ -100,8 +95,8 @@ function jsonSchemaToType(
   }
 
   // Handle oneOf/anyOf as unions
-  if (schema.oneOf || schema.anyOf) {
-    const variants = (schema.oneOf || schema.anyOf)!;
+  const variants = schema.oneOf ?? schema.anyOf;
+  if (variants) {
     return {
       union: {
         name,
@@ -196,12 +191,11 @@ function jsonSchemaPropertyToType(schema: JSONSchema): CompiledType {
   }
 
   // Handle oneOf/anyOf
-  if (schema.oneOf || schema.anyOf) {
+  const unionVariants = schema.oneOf ?? schema.anyOf;
+  if (unionVariants) {
     return {
       kind: "union",
-      variants: (schema.oneOf || schema.anyOf)!.map((v) =>
-        jsonSchemaPropertyToType(v),
-      ),
+      variants: unionVariants.map((v) => jsonSchemaPropertyToType(v)),
     };
   }
 
