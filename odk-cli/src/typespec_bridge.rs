@@ -61,6 +61,29 @@ pub fn compiled_to_typespec(schema: &CompiledSchema, namespace: &str) -> String 
     compiled_to_typespec_with_options(schema, namespace, &EmitOptions::default())
 }
 
+/// Reject a schema the TypeSpec `compile` path cannot yet emit correctly.
+///
+/// The bridge emits string enums, but a data-carrying (tagged) union would come
+/// out as an undiscriminated union alias, silently dropping the discriminator
+/// from the OpenAPI / JSON Schema output. Until the discriminator path exists,
+/// return a clear error so `odk compile` fails loudly instead. Returns `None`
+/// when every union is a plain string enum.
+pub fn unsupported_feature(schema: &CompiledSchema) -> Option<String> {
+    schema
+        .unions
+        .iter()
+        .find(|u| u.is_data_carrying())
+        .map(|u| {
+            format!(
+                "`odk compile` does not yet support the data-carrying (tagged) union `{}`; the \
+                 TypeSpec discriminator path is not implemented, so the discriminator would be \
+                 dropped from the OpenAPI / JSON Schema output. Use `odk generate -t rust,typescript` \
+                 for tagged unions.",
+                u.name
+            )
+        })
+}
+
 /// Convert a CompiledSchema to TypeSpec source code with target options.
 pub fn compiled_to_typespec_with_options(
     schema: &CompiledSchema,
@@ -507,6 +530,29 @@ fn import_to_using_namespace(import: &str) -> Option<&'static str> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn compile_allows_a_string_enum() {
+        let mut schema = CompiledSchema::new("S");
+        schema.add_union(string_enum("Status", &["draft", "published"]));
+        assert!(unsupported_feature(&schema).is_none());
+    }
+
+    #[test]
+    fn compile_rejects_a_data_carrying_union() {
+        let mut schema = CompiledSchema::new("S");
+        schema.add_union(CompiledUnion {
+            name: "OpNode".to_string(),
+            tag: Some("op".to_string()),
+            variants: vec![odk_schema::CompiledUnionVariant {
+                name: "cube".to_string(),
+                variant_type: Some(CompiledType::Object { fields: vec![] }),
+            }],
+            ..Default::default()
+        });
+        let err = unsupported_feature(&schema).expect("tagged union should be rejected");
+        assert!(err.contains("OpNode") && err.contains("compile"), "{err}");
+    }
 
     #[test]
     fn test_simple_schema() {
