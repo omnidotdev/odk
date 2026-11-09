@@ -377,6 +377,12 @@ fn compile_with_typespec(
     namespace: Option<String>,
     keep_temp: bool,
 ) -> Result<()> {
+    // Reject what the TypeSpec bridge cannot yet emit (a data-carrying union
+    // would silently lose its discriminator) before doing any work
+    if let Some(message) = typespec_bridge::unsupported_feature(schema) {
+        bail!(message);
+    }
+
     // Check that tsp is available
     if which::which("tsp").is_err() {
         bail!(
@@ -823,6 +829,14 @@ fn cmd_generate(
         .as_ref()
         .and_then(|c| c.generate.as_ref())
         .and_then(|g| g.mcp.as_ref());
+
+    // Reject a schema a requested target cannot yet emit correctly (a tagged
+    // union on the python target, mutual recursion on the rust target) before
+    // generating, so the failure is a clear message rather than silently wrong
+    // output or Rust that will not compile
+    if let Err(message) = generate::check_support(&schema, &targets) {
+        bail!(message);
+    }
 
     let mut output = generate::generate(&schema, &targets, mcp_config);
 

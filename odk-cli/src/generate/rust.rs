@@ -177,6 +177,120 @@ fn tagged_enum_def(union: &odk_schema::CompiledUnion) -> String {
     out
 }
 
+/// Detect a reference cycle the emitter's self-reference boxing does not break,
+/// i.e. mutual recursion (`A -> B -> A`) or a self-referential model field. Such
+/// a type is infinitely sized and the generated Rust would not compile, so this
+/// reports it up front with a clear message instead of emitting code that fails
+/// at the consumer's `cargo build`. Returns `None` when the Rust is finite.
+///
+/// The emitter boxes exactly one case: a direct reference back to a tagged
+/// union inside that union's own variant. Every other inline reference (a model
+/// field, a non-self reference, a fixed-length array of references) propagates
+/// size, while a `Vec` (variable-length array) is heap indirection that breaks a
+/// cycle. The graph below mirrors that so a flagged cycle is a real compile
+/// failure, never a false positive on code that would build.
+pub(crate) fn unsupported_recursion(schema: &CompiledSchema) -> Option<String> {
+    let mut edges: BTreeMap<String, Vec<String>> = BTreeMap::new();
+
+    for model in &schema.models {
+        let mut targets = Vec::new();
+        for f in &model.fields {
+            // a struct field is never boxed, so a direct self-reference counts
+            collect_sized_refs(&f.field_type, &mut targets);
+        }
+        edges.insert(model.name.clone(), targets);
+    }
+
+    for union in &schema.unions {
+        let mut targets = Vec::new();
+        for v in &union.variants {
+            match &v.variant_type {
+                Some(CompiledType::Object { fields }) => {
+                    for f in fields {
+                        // a direct self-reference field is boxed by the emitter
+                        if matches!(&f.field_type, CompiledType::Ref { name } if name == &union.name)
+                        {
+                            continue;
+                        }
+                        collect_sized_refs(&f.field_type, &mut targets);
+                    }
+                }
+                // a newtype self-reference payload is boxed by the emitter
+                Some(CompiledType::Ref { name }) if name != &union.name => {
+                    targets.push(name.clone());
+                }
+                Some(CompiledType::Ref { .. }) | None => {}
+                Some(other) => collect_sized_refs(other, &mut targets),
+            }
+        }
+        edges.insert(union.name.clone(), targets);
+    }
+
+    let mut state: BTreeMap<String, u8> = edges.keys().map(|k| (k.clone(), 0u8)).collect();
+    for start in edges.keys() {
+        if state.get(start).copied().unwrap_or(0) == 0
+            && let Some(cycle) = dfs_cycle(start, &edges, &mut state, &mut Vec::new())
+        {
+            return Some(format!(
+                "the Rust target cannot emit the recursive type cycle {}: the references are \
+                 inline, so the type is infinitely sized and the generated Rust will not \
+                 compile. ODK boxes a direct self-reference inside a tagged union, but not a \
+                 cycle through other types. Break the cycle with a list field, or generate \
+                 these types with -t typescript.",
+                cycle.join(" -> ")
+            ));
+        }
+    }
+    None
+}
+
+/// Collect the names a type inlines without heap indirection: a direct
+/// reference, or a fixed-length array of such (a `Vec` is omitted, since it is
+/// heap-allocated and breaks a size cycle).
+fn collect_sized_refs(t: &CompiledType, out: &mut Vec<String>) {
+    match t {
+        CompiledType::Ref { name } => out.push(name.clone()),
+        CompiledType::Array {
+            items,
+            length: Some(_),
+        } => collect_sized_refs(items, out),
+        _ => {}
+    }
+}
+
+/// Three-colour DFS that returns the first cycle found as the path of names that
+/// closes it (`[A, B, A]`), or `None` if the subgraph from `node` is acyclic.
+fn dfs_cycle(
+    node: &str,
+    edges: &BTreeMap<String, Vec<String>>,
+    state: &mut BTreeMap<String, u8>,
+    stack: &mut Vec<String>,
+) -> Option<Vec<String>> {
+    state.insert(node.to_string(), 1);
+    stack.push(node.to_string());
+    if let Some(neighbours) = edges.get(node) {
+        for n in neighbours {
+            match state.get(n).copied().unwrap_or(0) {
+                1 => {
+                    let at = stack.iter().position(|s| s == n).unwrap_or(0);
+                    let mut cycle = stack[at..].to_vec();
+                    cycle.push(n.clone());
+                    return Some(cycle);
+                }
+                0 => {
+                    if let Some(cycle) = dfs_cycle(n, edges, state, stack) {
+                        return Some(cycle);
+                    }
+                }
+                _ => {}
+            }
+        }
+    }
+    stack.pop();
+    state.insert(node.to_string(), 2);
+    None
+}
+
 /// Map a field type inside an enum variant, boxing a direct self-reference so
 /// the recursive enum has a finite size (a reference nested in a `Vec` or other
 /// container does not need boxing).
@@ -723,6 +837,90 @@ mod tests {
     fn an_empty_model_is_still_valid_rust() {
         let out = render(&schema_with(vec![CompiledModel::new("Empty")]));
         assert!(out.contains("pub struct Empty {}"));
+    }
+
+    // Build a tagged union whose single variant is an object carrying the given
+    // fields, used to exercise the recursion detector.
+    fn tagged(name: &str, variant: &str, fields: Vec<CompiledField>) -> CompiledUnion {
+        CompiledUnion {
+            name: name.to_string(),
+            tag: Some("kind".to_string()),
+            rename_all: None,
+            variants: vec![CompiledUnionVariant {
+                name: variant.to_string(),
+                variant_type: Some(CompiledType::Object { fields }),
+            }],
+            description: None,
+            extensions: odk_schema::Extensions::default(),
+            source: None,
+        }
+    }
+
+    #[test]
+    fn self_recursion_is_not_flagged_because_the_emitter_boxes_it() {
+        // OpNode { translate { child: OpNode } } -> child is boxed, so finite
+        let mut schema = CompiledSchema::new("Geo");
+        schema.add_union(tagged(
+            "OpNode",
+            "translate",
+            vec![CompiledField::new(
+                "child",
+                CompiledType::reference("OpNode"),
+            )],
+        ));
+        assert!(unsupported_recursion(&schema).is_none());
+    }
+
+    #[test]
+    fn a_vec_reference_breaks_a_cycle_and_is_not_flagged() {
+        // A { a { b: B } }, B { b { a: [A] as a list } } -> the Vec is heap
+        // indirection, so the cycle is finite
+        let mut schema = CompiledSchema::new("G");
+        schema.add_union(tagged(
+            "A",
+            "a",
+            vec![CompiledField::new("b", CompiledType::reference("B"))],
+        ));
+        schema.add_union(tagged(
+            "B",
+            "b",
+            vec![CompiledField::new(
+                "a",
+                CompiledType::array(CompiledType::reference("A")),
+            )],
+        ));
+        assert!(unsupported_recursion(&schema).is_none());
+    }
+
+    #[test]
+    fn mutual_recursion_through_direct_refs_is_flagged() {
+        // A { a { b: B } }, B { b { a: A } } -> neither ref is a self-reference,
+        // so neither is boxed; the type is infinitely sized and will not compile
+        let mut schema = CompiledSchema::new("G");
+        schema.add_union(tagged(
+            "A",
+            "a",
+            vec![CompiledField::new("b", CompiledType::reference("B"))],
+        ));
+        schema.add_union(tagged(
+            "B",
+            "b",
+            vec![CompiledField::new("a", CompiledType::reference("A"))],
+        ));
+        let msg = unsupported_recursion(&schema).expect("mutual recursion should be flagged");
+        assert!(msg.contains('A') && msg.contains('B'), "message: {msg}");
+    }
+
+    #[test]
+    fn a_self_referential_model_field_is_flagged() {
+        // Category { parent: Category } -> a struct field is never boxed, so this
+        // is infinitely sized Rust today
+        let mut model = CompiledModel::new("Category");
+        model.add_field(CompiledField::new(
+            "parent",
+            CompiledType::reference("Category"),
+        ));
+        assert!(unsupported_recursion(&schema_with(vec![model])).is_some());
     }
 
     #[test]

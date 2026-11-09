@@ -134,3 +134,90 @@ pub fn generate(
 
     output
 }
+
+/// Reject a schema a requested target cannot yet emit correctly, before any
+/// code is generated.
+///
+/// Only the `rust` and `typescript` targets emit data-carrying (tagged) unions;
+/// the `python` target emits string enums only and would silently drop the
+/// payloads. The `rust` target also cannot emit a reference cycle its boxing
+/// does not break (mutual recursion), which would produce infinitely-sized Rust.
+/// Returning a clear error here turns both silent failures into an actionable
+/// message. Targets that handle the schema impose no restriction.
+pub fn check_support(schema: &CompiledSchema, targets: &[Target]) -> Result<(), String> {
+    if targets.contains(&Target::Python)
+        && let Some(union) = schema.unions.iter().find(|u| u.is_data_carrying())
+    {
+        return Err(format!(
+            "the python target does not yet support the data-carrying (tagged) union `{}`; it \
+             emits string enums only, so it would drop the variant payloads. Use \
+             -t rust,typescript for tagged unions.",
+            union.name
+        ));
+    }
+
+    if targets.contains(&Target::Rust)
+        && let Some(message) = rust::unsupported_recursion(schema)
+    {
+        return Err(message);
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use odk_schema::{CompiledType, CompiledUnion, CompiledUnionVariant};
+
+    fn string_enum() -> CompiledUnion {
+        CompiledUnion {
+            name: "Status".to_string(),
+            variants: vec![CompiledUnionVariant::literal_string("draft")],
+            ..Default::default()
+        }
+    }
+
+    fn tagged_union() -> CompiledUnion {
+        CompiledUnion {
+            name: "OpNode".to_string(),
+            tag: Some("op".to_string()),
+            variants: vec![CompiledUnionVariant {
+                name: "cube".to_string(),
+                variant_type: Some(CompiledType::Object { fields: vec![] }),
+            }],
+            ..Default::default()
+        }
+    }
+
+    fn schema_with_union(union: CompiledUnion) -> CompiledSchema {
+        let mut schema = CompiledSchema::new("S");
+        schema.add_union(union);
+        schema
+    }
+
+    #[test]
+    fn python_rejects_a_data_carrying_union() {
+        let schema = schema_with_union(tagged_union());
+        let err = check_support(&schema, &[Target::Python]).unwrap_err();
+        assert!(err.contains("python") && err.contains("OpNode"), "{err}");
+    }
+
+    #[test]
+    fn python_allows_a_string_enum() {
+        let schema = schema_with_union(string_enum());
+        assert!(check_support(&schema, &[Target::Python]).is_ok());
+    }
+
+    #[test]
+    fn typescript_allows_a_data_carrying_union() {
+        let schema = schema_with_union(tagged_union());
+        assert!(check_support(&schema, &[Target::Typescript]).is_ok());
+    }
+
+    #[test]
+    fn rust_allows_a_data_carrying_union_without_mutual_recursion() {
+        let schema = schema_with_union(tagged_union());
+        assert!(check_support(&schema, &[Target::Rust]).is_ok());
+    }
+}

@@ -604,6 +604,29 @@ impl CompiledType {
     }
 }
 
+impl CompiledUnion {
+    /// Whether this union carries data, i.e. it is not a plain string enum.
+    ///
+    /// True when a discriminator `tag` is set or any variant has a payload that
+    /// is not a bare string literal (an object, a ref, an array, a number, a
+    /// bool). Only the Rust and TypeScript `generate` targets emit this shape
+    /// today; the other targets (Python, the TypeSpec compile path) support
+    /// string enums only, so they use this to reject what they cannot yet emit
+    /// rather than silently degrade it to a string enum.
+    pub fn is_data_carrying(&self) -> bool {
+        if self.tag.is_some() {
+            return true;
+        }
+        self.variants.iter().any(|v| match &v.variant_type {
+            None => false,
+            Some(CompiledType::Literal {
+                value: LiteralValue::String(_),
+            }) => false,
+            Some(_) => true,
+        })
+    }
+}
+
 impl CompiledUnionVariant {
     /// Create a variant with a string literal type.
     pub fn literal_string(value: impl Into<String>) -> Self {
@@ -620,6 +643,49 @@ impl CompiledUnionVariant {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn string_union() -> CompiledUnion {
+        CompiledUnion {
+            name: "Status".to_string(),
+            variants: vec![
+                CompiledUnionVariant {
+                    name: "draft".to_string(),
+                    variant_type: None,
+                },
+                CompiledUnionVariant::literal_string("published"),
+            ],
+            ..Default::default()
+        }
+    }
+
+    #[test]
+    fn a_plain_string_union_is_not_data_carrying() {
+        assert!(!string_union().is_data_carrying());
+    }
+
+    #[test]
+    fn a_discriminator_tag_makes_a_union_data_carrying() {
+        let mut union = string_union();
+        union.tag = Some("kind".to_string());
+        assert!(union.is_data_carrying());
+    }
+
+    #[test]
+    fn an_object_payload_variant_makes_a_union_data_carrying() {
+        let mut union = string_union();
+        union.variants.push(CompiledUnionVariant {
+            name: "cube".to_string(),
+            variant_type: Some(CompiledType::Object {
+                fields: vec![CompiledField::new(
+                    "size",
+                    CompiledType::Scalar {
+                        name: ScalarType::Float64,
+                    },
+                )],
+            }),
+        });
+        assert!(union.is_data_carrying());
+    }
 
     #[test]
     fn test_schema_serialization() {
