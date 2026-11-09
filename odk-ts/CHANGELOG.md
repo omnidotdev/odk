@@ -1,5 +1,11 @@
 # @omnidotdev/odk
 
+## 0.1.1
+
+### Patch Changes
+
+- [#11](https://github.com/omnidotdev/odk/pull/11) [`e493a66`](https://github.com/omnidotdev/odk/commit/e493a66a9ccda7fdb1dc560be6e3ca752df3285c) Thanks [@coopbri](https://github.com/coopbri)! - Publish the ODK Python PDK (`odk-pdk`) to the Omni Manifold registry via trusted publishing, installable with `pip install odk-pdk --index-url https://api.manifold.omni.dev/pypi/omnidotdev/simple/`. The TypeScript SDK and the Rust crates are unchanged in this release and move to the same version.
+
 ## 0.1.0
 
 ### Minor Changes
