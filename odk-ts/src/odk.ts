@@ -38,16 +38,12 @@
  * ```
  */
 
+import { standardSchemaToCompiled } from "./standardSchemaAdapter.js";
+import { compiledSchemaToTypeSpec, emitToTargets } from "./typespecBridge.js";
+
 import type { CompiledSchema, RawTypeSpecBlock } from "./compile.js";
-import {
-  standardSchemaToCompiled,
-  type AdapterOptions,
-} from "./standardSchemaAdapter.js";
-import {
-  emitToTargets,
-  compiledSchemaToTypeSpec,
-  type EmitOptions,
-} from "./typespecBridge.js";
+import type { AdapterOptions } from "./standardSchemaAdapter.js";
+import type { EmitOptions } from "./typespecBridge.js";
 
 export interface SchemaOptions extends AdapterOptions {
   /** Description for the schema namespace */
