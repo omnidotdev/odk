@@ -49,7 +49,11 @@ export interface CompiledField {
   name: string;
   type: CompiledType;
   optional?: boolean;
+  /** Whether the field also admits `null` (emitted as `T | null`) */
+  nullable?: boolean;
   description?: string;
+  /** Default value, emitted as a TypeSpec property default */
+  default?: unknown;
   constraints?: FieldConstraints;
   /** Decorators and extensions for this field */
   extensions?: Extensions;
@@ -65,6 +69,8 @@ export interface FieldConstraints {
   pattern?: string;
   format?: string;
   multipleOf?: number;
+  minItems?: number;
+  maxItems?: number;
 }
 
 export type CompiledType =
@@ -79,6 +85,8 @@ export type ScalarType =
   | "string"
   | "int32"
   | "int64"
+  /** Integer within the IEEE 754 safe range, as produced by JS validators */
+  | "safeint"
   | "float32"
   | "float64"
   | "boolean"

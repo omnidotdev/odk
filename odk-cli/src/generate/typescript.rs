@@ -196,9 +196,11 @@ fn scalar_to_ts(s: &ScalarType) -> &'static str {
         | ScalarType::Duration
         | ScalarType::Bytes
         | ScalarType::Url => "string",
-        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Float32 | ScalarType::Float64 => {
-            "number"
-        }
+        ScalarType::Int32
+        | ScalarType::Int64
+        | ScalarType::Safeint
+        | ScalarType::Float32
+        | ScalarType::Float64 => "number",
         ScalarType::Boolean => "boolean",
         ScalarType::Unknown => "unknown",
     }

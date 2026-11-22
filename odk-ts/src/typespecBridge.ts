@@ -5,12 +5,16 @@
  * the TypeSpec compiler to emit to various targets.
  */
 
+import { existsSync } from "node:fs";
+import path from "node:path";
+
 import type {
   CompiledField,
   CompiledModel,
   CompiledSchema,
   CompiledType,
   CompiledUnion,
+  ScalarType,
 } from "./compile.js";
 
 export interface EmitOptions {
@@ -32,35 +36,88 @@ export function compiledSchemaToTypeSpec(
   const lines: string[] = [];
   const ns = namespace || schema.name;
 
-  // Imports
-  lines.push('import "@typespec/json-schema";');
+  // Imports: JSON Schema is always needed for the @jsonSchema decorator, the
+  // rest come from the schema (odk.addImport / SchemaOptions.imports)
+  const imports = [
+    "@typespec/json-schema",
+    ...(schema.imports ?? []).filter((i) => i !== "@typespec/json-schema"),
+  ];
+  const uniqueImports = [...new Set(imports)];
+  for (const importPath of uniqueImports) {
+    lines.push(`import "${escapeString(importPath)}";`);
+  }
   lines.push("using TypeSpec.JsonSchema;");
+  for (const importPath of uniqueImports) {
+    const usingNs = importToUsingNamespace(importPath);
+    if (usingNs) lines.push(`using ${usingNs};`);
+  }
   lines.push("");
 
-  // Namespace
+  // Namespace, declared as a service so the OpenAPI emitter includes its
+  // models as component schemas even when no operation references them
+  lines.push(`@service(#{ title: "${escapeString(ns)}" })`);
   lines.push(`namespace ${sanitizeIdentifier(ns)};`);
   lines.push("");
 
   // Emit unions first (enums)
   for (const union of schema.unions) {
-    lines.push(emitUnion(union));
+    lines.push(emitUnion(union, schema));
     lines.push("");
   }
 
   // Emit models
   for (const model of schema.models) {
-    lines.push(emitModel(model));
+    lines.push(emitModel(model, schema));
+    lines.push("");
+  }
+
+  // Emit raw TypeSpec blocks (odk.raw escape hatch)
+  for (const block of schema.rawBlocks ?? []) {
+    if (block.description) lines.push(`// ${block.description}`);
+    lines.push(block.content);
     lines.push("");
   }
 
   return lines.join("\n");
 }
 
-function emitUnion(union: CompiledUnion): string {
+/**
+ * Map a TypeSpec library import to the namespace its decorators live in, so
+ * they resolve without qualification (mirrors the Rust CLI bridge).
+ */
+function importToUsingNamespace(importPath: string): string | undefined {
+  switch (importPath) {
+    case "@typespec/http":
+      return "TypeSpec.Http";
+    case "@typespec/rest":
+      return "TypeSpec.Rest";
+    case "@typespec/openapi":
+    case "@typespec/openapi3":
+      return "TypeSpec.OpenAPI";
+    case "@typespec/protobuf":
+      return "TypeSpec.Protobuf";
+    case "@typespec/versioning":
+      return "TypeSpec.Versioning";
+    case "@typespec/xml":
+      return "TypeSpec.Xml";
+    case "@typespec/events":
+      return "TypeSpec.Events";
+    case "@typespec/streams":
+      return "TypeSpec.Streams";
+    case "@typespec/sse":
+      return "TypeSpec.SSE";
+    case "@omnidotdev/typespec-drizzle":
+      return "Drizzle";
+    default:
+      return undefined;
+  }
+}
+
+function emitUnion(union: CompiledUnion, schema: CompiledSchema): string {
   const lines: string[] = [];
 
   if (union.description) {
-    lines.push(`/** ${union.description} */`);
+    lines.push(docDecorator(union.description));
   }
 
   // Check if it's a string literal enum
@@ -69,6 +126,7 @@ function emitUnion(union: CompiledUnion): string {
   );
 
   if (isStringEnum) {
+    lines.push("@jsonSchema");
     lines.push(`enum ${sanitizeIdentifier(union.name)} {`);
     for (const variant of union.variants) {
       const value = (variant.type as { kind: "literal"; value: string }).value;
@@ -87,7 +145,7 @@ function emitUnion(union: CompiledUnion): string {
   } else {
     // Union type
     const variantTypes = union.variants
-      .map((v) => (v.type ? typeToString(v.type) : v.name))
+      .map((v) => (v.type ? typeToString(v.type, schema) : v.name))
       .join(" | ");
     lines.push(`alias ${sanitizeIdentifier(union.name)} = ${variantTypes};`);
   }
@@ -95,18 +153,18 @@ function emitUnion(union: CompiledUnion): string {
   return lines.join("\n");
 }
 
-function emitModel(model: CompiledModel): string {
+function emitModel(model: CompiledModel, schema: CompiledSchema): string {
   const lines: string[] = [];
 
   if (model.description) {
-    lines.push(`/** ${model.description} */`);
+    lines.push(docDecorator(model.description));
   }
 
   lines.push("@jsonSchema");
   lines.push(`model ${sanitizeIdentifier(model.name)} {`);
 
   for (const field of model.fields) {
-    lines.push(emitField(field));
+    lines.push(`  ${emitField(field, schema)};`);
   }
 
   lines.push("}");
@@ -114,8 +172,12 @@ function emitModel(model: CompiledModel): string {
   return lines.join("\n");
 }
 
-function emitField(field: CompiledField): string {
+function emitField(field: CompiledField, schema: CompiledSchema): string {
   const decorators: string[] = [];
+
+  if (field.description) {
+    decorators.push(docDecorator(field.description));
+  }
 
   // Add constraint decorators
   if (field.constraints) {
@@ -126,6 +188,8 @@ function emitField(field: CompiledField): string {
       decorators.push(`@maxLength(${c.maxLength})`);
     if (c.minValue !== undefined) decorators.push(`@minValue(${c.minValue})`);
     if (c.maxValue !== undefined) decorators.push(`@maxValue(${c.maxValue})`);
+    if (c.minItems !== undefined) decorators.push(`@minItems(${c.minItems})`);
+    if (c.maxItems !== undefined) decorators.push(`@maxItems(${c.maxItems})`);
     if (c.pattern !== undefined)
       decorators.push(`@pattern("${escapeString(c.pattern)}")`);
     if (c.multipleOf !== undefined)
@@ -150,25 +214,111 @@ function emitField(field: CompiledField): string {
           decorators.push('@format("date-time")');
           break;
         default:
-          decorators.push(`@format("${c.format}")`);
+          decorators.push(`@format("${escapeString(c.format)}")`);
       }
     }
   }
 
   const decoratorStr = decorators.length > 0 ? `${decorators.join(" ")} ` : "";
-  const optionalMark = field.optional ? "?" : "";
-  const typeStr = typeToString(field.type);
+  // A defaulted field is optional: TypeSpec only allows defaults on optional
+  // properties, and callers may omit it
+  const defaultValue = defaultToTypeSpec(field.default, field.type, schema);
+  const optionalMark = field.optional || defaultValue !== undefined ? "?" : "";
+  const baseType = typeToString(field.type, schema);
+  const typeStr = field.nullable ? `${baseType} | null` : baseType;
+  const defaultStr = defaultValue !== undefined ? ` = ${defaultValue}` : "";
   const fieldName = sanitizeIdentifier(field.name);
 
-  return `  ${decoratorStr}${fieldName}${optionalMark}: ${typeStr};`;
+  return `${decoratorStr}${fieldName}${optionalMark}: ${typeStr}${defaultStr}`;
 }
 
-function typeToString(type: CompiledType): string {
+/** Scalars whose defaults are plain value literals */
+const LITERAL_DEFAULT_SCALARS = new Set<ScalarType>([
+  "string",
+  "int32",
+  "int64",
+  "safeint",
+  "float32",
+  "float64",
+  "boolean",
+  "unknown",
+]);
+
+/**
+ * Render a field default as a TypeSpec value expression.
+ *
+ * Returns `undefined` when the default cannot be expressed for the field's
+ * type (e.g. a date-time scalar, which needs a constructor call), so the field
+ * is emitted without a default instead of failing compilation.
+ */
+function defaultToTypeSpec(
+  value: unknown,
+  type: CompiledType,
+  schema: CompiledSchema,
+): string | undefined {
+  if (value === undefined) return undefined;
+
+  // A reference to a string enum takes a member reference, not a literal
+  if (type.kind === "ref") {
+    const union = schema.unions.find((u) => u.name === type.name);
+    const variant = union?.variants.find(
+      (v) => v.type?.kind === "literal" && v.type.value === value,
+    );
+    if (!union || !variant || !isValidIdentifier(variant.name)) {
+      return undefined;
+    }
+    return `${sanitizeIdentifier(union.name)}.${variant.name}`;
+  }
+
+  if (type.kind === "scalar" && !LITERAL_DEFAULT_SCALARS.has(type.name)) {
+    return undefined;
+  }
+
+  return valueToTypeSpec(value);
+}
+
+/** Render a JSON value as a TypeSpec value literal */
+function valueToTypeSpec(value: unknown): string | undefined {
+  if (value === null) return "null";
+  if (typeof value === "string") return `"${escapeString(value)}"`;
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : undefined;
+  }
+  if (typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const items = value.map(valueToTypeSpec);
+    if (items.some((i) => i === undefined)) return undefined;
+    return `#[${items.join(", ")}]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).map(
+      ([k, v]) => {
+        const rendered = valueToTypeSpec(v);
+        if (rendered === undefined) return undefined;
+        const key = isValidIdentifier(k) ? k : `\`${k.replace(/`/g, "\\`")}\``;
+        return `${key}: ${rendered}`;
+      },
+    );
+    if (entries.some((e) => e === undefined)) return undefined;
+    return `#{${entries.join(", ")}}`;
+  }
+  return undefined;
+}
+
+/** Render a description as a @doc decorator */
+function docDecorator(description: string): string {
+  return `@doc("${escapeString(description)}")`;
+}
+
+function typeToString(type: CompiledType, schema: CompiledSchema): string {
   switch (type.kind) {
     case "scalar":
       return scalarToTypeSpec(type.name);
-    case "array":
-      return `${typeToString(type.items)}[]`;
+    case "array": {
+      const items = typeToString(type.items, schema);
+      // Parenthesize unions so `[]` applies to the whole union
+      return type.items.kind === "union" ? `(${items})[]` : `${items}[]`;
+    }
     case "ref":
       return sanitizeIdentifier(type.name);
     case "literal":
@@ -177,14 +327,9 @@ function typeToString(type: CompiledType): string {
       }
       return String(type.value);
     case "union":
-      return type.variants.map(typeToString).join(" | ");
+      return type.variants.map((v) => typeToString(v, schema)).join(" | ");
     case "object": {
-      const fields = type.fields
-        .map((f) => {
-          const opt = f.optional ? "?" : "";
-          return `${f.name}${opt}: ${typeToString(f.type)}`;
-        })
-        .join("; ");
+      const fields = type.fields.map((f) => emitField(f, schema)).join("; ");
       return `{ ${fields} }`;
     }
     default:
@@ -200,6 +345,8 @@ function scalarToTypeSpec(scalar: string): string {
       return "int32";
     case "int64":
       return "int64";
+    case "safeint":
+      return "safeint";
     case "float32":
       return "float32";
     case "float64":
@@ -232,7 +379,49 @@ function isValidIdentifier(name: string): boolean {
 }
 
 function escapeString(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
+  return s
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/\t/g, "\\t")
+    .replace(/\$\{/g, "\\${");
+}
+
+/**
+ * Find the `node_modules` directory that provides the TypeSpec toolchain.
+ *
+ * Walks up from each start directory (in order) the way Node resolves
+ * packages, and returns the first `node_modules` containing
+ * `@typespec/compiler` and every requested package. If none has them all, the
+ * first one containing the compiler wins, so emitter resolution errors still
+ * come from the compiler with a useful message. Returns `undefined` when no
+ * compiler is found.
+ */
+export function findTypeSpecNodeModules(
+  startDirs: string[],
+  packages: string[],
+): string | undefined {
+  let compilerOnly: string | undefined;
+
+  for (const start of startDirs) {
+    let dir = path.resolve(start);
+    while (true) {
+      const candidate = path.join(dir, "node_modules");
+      if (existsSync(path.join(candidate, "@typespec", "compiler"))) {
+        if (packages.every((p) => existsSync(path.join(candidate, p)))) {
+          return candidate;
+        }
+        compilerOnly ??= candidate;
+      }
+
+      const parent = path.dirname(dir);
+      if (parent === dir) break;
+      dir = parent;
+    }
+  }
+
+  return compilerOnly;
 }
 
 /**
@@ -248,7 +437,6 @@ export async function emitToTargets(
   const { targets, outDir, namespace } = options;
 
   const fs = await import("node:fs/promises");
-  const path = await import("node:path");
   const os = await import("node:os");
 
   // Generate TypeSpec source
@@ -278,16 +466,21 @@ export async function emitToTargets(
       "utf-8",
     );
 
-    // Symlink node_modules from odk-ts to the temp directory
-    // This avoids having to install packages
-    const odkNodeModules = path.resolve(import.meta.dirname, "../node_modules");
+    // Symlink the node_modules holding the TypeSpec toolchain into the temp
+    // project so the compiler can resolve the imported emitters without an
+    // install. This is the consumer's node_modules when ODK is a dependency
+    const toolchainNodeModules =
+      findTypeSpecNodeModules(
+        [process.cwd(), import.meta.dirname],
+        ["@typespec/json-schema", ...targets],
+      ) ?? path.resolve(import.meta.dirname, "../node_modules");
     const tempNodeModules = path.join(tempDir, "node_modules");
 
     try {
-      await fs.symlink(odkNodeModules, tempNodeModules, "dir");
+      await fs.symlink(toolchainNodeModules, tempNodeModules, "dir");
     } catch {
-      // If symlink fails (e.g., on Windows without admin), copy the approach below
-      // For now, just try to compile with the current working directory
+      // Symlinks can fail (e.g. Windows without privileges); compilation then
+      // falls back to resolving from the temp directory's ancestors
     }
 
     // Create tspconfig.yaml

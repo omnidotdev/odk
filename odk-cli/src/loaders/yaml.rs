@@ -405,6 +405,9 @@ fn parse_type(type_str: &str) -> Result<CompiledType, YamlLoadError> {
         "int64" | "bigint" => Ok(CompiledType::Scalar {
             name: ScalarType::Int64,
         }),
+        "safeint" => Ok(CompiledType::Scalar {
+            name: ScalarType::Safeint,
+        }),
         "float32" | "float" => Ok(CompiledType::Scalar {
             name: ScalarType::Float32,
         }),

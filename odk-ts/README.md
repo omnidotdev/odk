@@ -99,6 +99,18 @@ ODK supports any TypeSpec emitter. Common ones:
 | `.email()` | `@format("email")` |
 | `.uuid()` | `@format("uuid")` |
 | `.datetime()` | `@format("date-time")` |
+| `.min(n)` / `.max(n)` (arrays) | `@minItems(n)` / `@maxItems(n)` |
+
+## Type and Modifier Mapping
+
+| Schema | TypeSpec | JSON Schema |
+|--------|----------|-------------|
+| `.int()` | `safeint` (`int32` when explicit bounds fit 32 bits) | `type: integer` |
+| `.describe("...")` | `@doc("...")` | `description` |
+| `.default(x)` | `field?: T = x` | `default`, not required |
+| `.nullable()` | `T \| null` | `anyOf` with `type: "null"` |
+| `.optional()` | `field?: T` | not required |
+| `z.enum([...])` | string-literal union (inline), `enum` (top level) | `anyOf` of `const` / `enum` |
 
 ### Non-Serializable Constraints
 

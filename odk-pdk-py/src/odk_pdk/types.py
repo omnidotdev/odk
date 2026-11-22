@@ -17,6 +17,7 @@ class ScalarType(Enum):
     STRING = "string"
     INT32 = "int32"
     INT64 = "int64"
+    SAFEINT = "safeint"
     FLOAT32 = "float32"
     FLOAT64 = "float64"
     BOOLEAN = "boolean"

@@ -445,6 +445,7 @@ fn scalar_to_typespec(scalar: &ScalarType, protobuf: bool) -> String {
         ScalarType::String => "string".to_string(),
         ScalarType::Int32 => "int32".to_string(),
         ScalarType::Int64 => "int64".to_string(),
+        ScalarType::Safeint => "safeint".to_string(),
         ScalarType::Float32 => "float32".to_string(),
         ScalarType::Float64 => "float64".to_string(),
         ScalarType::Boolean => "boolean".to_string(),
@@ -609,6 +610,22 @@ mod tests {
         assert!(tsp.contains("@TypeSpec.JsonSchema.jsonSchema"));
         // never via `using`, which would collide with a library's decorators
         assert!(!tsp.contains("using TypeSpec.JsonSchema;"));
+    }
+
+    #[test]
+    fn test_safeint_from_ts_ir_round_trips_to_typespec() {
+        // The TypeScript SDK emits `safeint` for JS-validator integers; the IR
+        // must parse it and keep it, since `int64` renders as a JSON string
+        let schema: CompiledSchema = serde_json::from_str(
+            r#"{"name":"T","models":[{"name":"M","fields":[
+                {"name":"seed","type":{"kind":"scalar","name":"safeint"},"optional":true}
+            ]}],"unions":[]}"#,
+        )
+        .expect("safeint IR should deserialize");
+
+        let tsp = compiled_to_typespec(&schema, "T");
+
+        assert!(tsp.contains("seed?: safeint;"), "got:\n{tsp}");
     }
 
     fn protobuf_schema() -> CompiledSchema {

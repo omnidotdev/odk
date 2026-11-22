@@ -173,7 +173,7 @@ fn scalar_to_py(s: &ScalarType) -> &'static str {
         | ScalarType::PlainTime
         | ScalarType::Duration
         | ScalarType::Url => "str",
-        ScalarType::Int32 | ScalarType::Int64 => "int",
+        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Safeint => "int",
         ScalarType::Float32 | ScalarType::Float64 => "float",
         ScalarType::Boolean => "bool",
         ScalarType::Bytes => "bytes",
