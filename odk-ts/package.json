@@ -1,6 +1,6 @@
 {
   "name": "@omnidotdev/odk",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "Define schemas with Zod/ArkType/Valibot, emit to OpenAPI/Protobuf/etc via TypeSpec",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,6 @@
 [project]
 name = "odk-pdk"
-version = "0.1.2"
+version = "0.1.3"
 description = "ODK Plugin Development Kit for Python - Define schemas, compile to WASM"
 readme = "README.md"
 license = { text = "Apache-2.0" }
