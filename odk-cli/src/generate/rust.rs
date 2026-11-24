@@ -405,7 +405,7 @@ fn scalar_to_rust(s: &ScalarType) -> &'static str {
         | ScalarType::Bytes
         | ScalarType::Url => "String",
         ScalarType::Int32 => "i32",
-        ScalarType::Int64 => "i64",
+        ScalarType::Int64 | ScalarType::Safeint => "i64",
         ScalarType::Float32 => "f32",
         ScalarType::Float64 => "f64",
         ScalarType::Boolean => "bool",

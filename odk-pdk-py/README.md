@@ -70,6 +70,7 @@ See the full documentation at [docs/python-pdk.md](../docs/python-pdk.md).
 | `string`         | UTF-8 string                 |
 | `int32`          | 32-bit signed integer        |
 | `int64`          | 64-bit signed integer        |
+| `safeint`        | Integer within +/- 2^53 - 1  |
 | `float32`        | 32-bit float                 |
 | `float64`        | 64-bit float                 |
 | `boolean`        | Boolean                      |

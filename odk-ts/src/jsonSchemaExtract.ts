@@ -29,6 +29,8 @@ export interface JSONSchema {
   pattern?: string;
   format?: string;
   multipleOf?: number;
+  minItems?: number;
+  maxItems?: number;
   // Additional
   additionalProperties?: boolean | JSONSchema;
   default?: unknown;

@@ -114,25 +114,10 @@ function jsonSchemaToType(
 
   // Handle objects as models
   if (schema.type === "object" || schema.properties) {
-    const fields: CompiledField[] = [];
-    const required = new Set(schema.required || []);
-
-    for (const [propName, propSchema] of Object.entries(
-      schema.properties || {},
-    )) {
-      fields.push({
-        name: propName,
-        type: jsonSchemaPropertyToType(propSchema),
-        optional: !required.has(propName),
-        description: propSchema.description,
-        constraints: extractConstraints(propSchema),
-      });
-    }
-
     return {
       model: {
         name,
-        fields,
+        fields: objectFields(schema),
         description: schema.description,
       },
     };
@@ -211,21 +196,7 @@ function jsonSchemaPropertyToType(schema: JSONSchema): CompiledType {
 
   // Handle objects (inline)
   if (schema.type === "object" || schema.properties) {
-    const fields: CompiledField[] = [];
-    const required = new Set(schema.required || []);
-
-    for (const [propName, propSchema] of Object.entries(
-      schema.properties || {},
-    )) {
-      fields.push({
-        name: propName,
-        type: jsonSchemaPropertyToType(propSchema),
-        optional: !required.has(propName),
-        constraints: extractConstraints(propSchema),
-      });
-    }
-
-    return { kind: "object", fields };
+    return { kind: "object", fields: objectFields(schema) };
   }
 
   // Handle type arrays (union of types)
@@ -239,12 +210,138 @@ function jsonSchemaPropertyToType(schema: JSONSchema): CompiledType {
     };
   }
 
+  // Handle integers, whose width depends on their bounds
+  if (schema.type === "integer") {
+    return { kind: "scalar", name: integerScalar(schema) };
+  }
+
   // Handle primitive types
   if (typeof schema.type === "string") {
     return { kind: "scalar", name: jsonTypeToScalar(schema.type) };
   }
 
   return { kind: "scalar", name: "unknown" };
+}
+
+/**
+ * Convert an object schema's properties to fields.
+ *
+ * A property with a default is optional (callers may omit it), and a property
+ * that admits `null` is marked nullable on its non-null type rather than being
+ * widened to a union with an unknown variant.
+ */
+function objectFields(schema: JSONSchema): CompiledField[] {
+  const required = new Set(schema.required || []);
+
+  return Object.entries(schema.properties || {}).map(
+    ([propName, propSchema]) => {
+      const { schema: valueSchema, nullable } = stripNull(propSchema);
+      const hasDefault = propSchema.default !== undefined;
+
+      const field: CompiledField = {
+        name: propName,
+        type: jsonSchemaPropertyToType(valueSchema),
+        optional: !required.has(propName) || hasDefault,
+        description: propSchema.description,
+        constraints: extractConstraints(valueSchema),
+      };
+      if (nullable) field.nullable = true;
+      if (hasDefault) field.default = propSchema.default;
+
+      return field;
+    },
+  );
+}
+
+/**
+ * Split a schema that admits `null` into its non-null schema and a flag.
+ *
+ * Handles the three shapes JSON Schema generators use for nullability: a type
+ * array (`type: ["string", "null"]`), a union with a null branch
+ * (`anyOf: [{ type: "string" }, { type: "null" }]`), and an enum containing
+ * `null`. Keys on the outer schema (description, default) are preserved.
+ */
+function stripNull(schema: JSONSchema): {
+  schema: JSONSchema;
+  nullable: boolean;
+} {
+  if (Array.isArray(schema.type) && schema.type.includes("null")) {
+    const types = schema.type.filter((t) => t !== "null");
+    return {
+      schema: { ...schema, type: types.length === 1 ? types[0] : types },
+      nullable: true,
+    };
+  }
+
+  const branchKey = schema.anyOf ? "anyOf" : schema.oneOf ? "oneOf" : undefined;
+  const branches = branchKey ? schema[branchKey] : undefined;
+  if (branchKey && branches?.some(isNullSchema)) {
+    const nonNull = branches.filter((b) => !isNullSchema(b));
+    const { [branchKey]: _branches, ...outer } = schema;
+    const [single] = nonNull;
+
+    return {
+      schema:
+        nonNull.length === 1 && single
+          ? { ...single, ...outer }
+          : { ...outer, [branchKey]: nonNull },
+      nullable: true,
+    };
+  }
+
+  // The declared enum type omits null, but generators emit it for nullable
+  // enums, so check the runtime values
+  const enumValues: unknown[] | undefined = schema.enum;
+  if (schema.enum && enumValues?.includes(null)) {
+    return {
+      schema: { ...schema, enum: schema.enum.filter((v) => v !== null) },
+      nullable: true,
+    };
+  }
+
+  return { schema, nullable: false };
+}
+
+function isNullSchema(schema: JSONSchema): boolean {
+  return schema.type === "null";
+}
+
+/** Largest integer JS represents exactly, which validators emit as a bound */
+const MAX_SAFE = Number.MAX_SAFE_INTEGER;
+const INT32_MIN = -2147483648;
+const INT32_MAX = 2147483647;
+
+/**
+ * Pick the TypeSpec integer scalar for an integer schema.
+ *
+ * Validators for JS numbers bound integers to the safe range, so `safeint` is
+ * the faithful default (and renders as `type: integer`, unlike `int64`, which
+ * JSON Schema emitters render as a string). Explicit bounds that fit 32 bits
+ * narrow it to `int32`.
+ */
+function integerScalar(schema: JSONSchema): ScalarType {
+  if (schema.format === "int64") return "int64";
+  if (schema.format === "int32") return "int32";
+
+  const min = schema.minimum ?? schema.exclusiveMinimum;
+  const max = schema.maximum ?? schema.exclusiveMaximum;
+  if (
+    min !== undefined &&
+    max !== undefined &&
+    !isSafeBound(min) &&
+    !isSafeBound(max) &&
+    min >= INT32_MIN &&
+    max <= INT32_MAX
+  ) {
+    return "int32";
+  }
+
+  return "safeint";
+}
+
+/** Whether a bound is the synthetic safe-integer limit, not a user constraint */
+function isSafeBound(value: number): boolean {
+  return Math.abs(value) === MAX_SAFE;
 }
 
 function jsonTypeToScalar(type: string): ScalarType {
@@ -254,7 +351,7 @@ function jsonTypeToScalar(type: string): ScalarType {
     case "number":
       return "float64";
     case "integer":
-      return "int64";
+      return "safeint";
     case "boolean":
       return "boolean";
     case "null":
@@ -276,11 +373,20 @@ function extractConstraints(schema: JSONSchema): FieldConstraints | undefined {
     constraints.maxLength = schema.maxLength;
     hasConstraints = true;
   }
-  if (schema.minimum !== undefined) {
+  // Integer bounds equal to the safe-integer limit are implied by the
+  // `safeint` scalar, so they are not user constraints worth emitting
+  const isInteger = schema.type === "integer";
+  if (
+    schema.minimum !== undefined &&
+    !(isInteger && isSafeBound(schema.minimum))
+  ) {
     constraints.minValue = schema.minimum;
     hasConstraints = true;
   }
-  if (schema.maximum !== undefined) {
+  if (
+    schema.maximum !== undefined &&
+    !(isInteger && isSafeBound(schema.maximum))
+  ) {
     constraints.maxValue = schema.maximum;
     hasConstraints = true;
   }
@@ -302,6 +408,14 @@ function extractConstraints(schema: JSONSchema): FieldConstraints | undefined {
   }
   if (schema.multipleOf !== undefined) {
     constraints.multipleOf = schema.multipleOf;
+    hasConstraints = true;
+  }
+  if (schema.minItems !== undefined) {
+    constraints.minItems = schema.minItems;
+    hasConstraints = true;
+  }
+  if (schema.maxItems !== undefined) {
+    constraints.maxItems = schema.maxItems;
     hasConstraints = true;
   }
 

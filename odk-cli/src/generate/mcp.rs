@@ -242,7 +242,7 @@ fn compiled_type_to_zod(t: &CompiledType) -> String {
 fn scalar_to_zod(s: &ScalarType) -> &'static str {
     match s {
         ScalarType::String => "z.string()",
-        ScalarType::Int32 | ScalarType::Int64 => "z.number().int()",
+        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Safeint => "z.number().int()",
         ScalarType::Float32 | ScalarType::Float64 => "z.number()",
         ScalarType::Boolean => "z.boolean()",
         ScalarType::Date

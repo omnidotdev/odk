@@ -35,7 +35,7 @@ pub fn type_to_ts(t: &CompiledType) -> String {
 fn scalar_to_ts(s: &ScalarType) -> &'static str {
     match s {
         ScalarType::String => "string",
-        ScalarType::Int32 | ScalarType::Int64 => "number",
+        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Safeint => "number",
         ScalarType::Float32 | ScalarType::Float64 => "number",
         ScalarType::Boolean => "boolean",
         ScalarType::Date
@@ -55,7 +55,7 @@ fn scalar_to_ts(s: &ScalarType) -> &'static str {
 pub fn scalar_to_mock(s: &ScalarType) -> &'static str {
     match s {
         ScalarType::String => "\"\"",
-        ScalarType::Int32 | ScalarType::Int64 => "0",
+        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Safeint => "0",
         ScalarType::Float32 | ScalarType::Float64 => "0",
         ScalarType::Boolean => "false",
         ScalarType::Date | ScalarType::PlainDate => "\"2024-01-01\"",
@@ -128,7 +128,7 @@ fn compiled_type_to_graphql(t: &CompiledType) -> String {
 fn scalar_to_graphql(s: &ScalarType) -> &'static str {
     match s {
         ScalarType::String => "String",
-        ScalarType::Int32 | ScalarType::Int64 => "Int",
+        ScalarType::Int32 | ScalarType::Int64 | ScalarType::Safeint => "Int",
         ScalarType::Float32 | ScalarType::Float64 => "Float",
         ScalarType::Boolean => "Boolean",
         _ => "String",

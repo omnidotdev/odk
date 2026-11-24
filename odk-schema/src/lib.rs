@@ -299,6 +299,9 @@ pub enum ScalarType {
     String,
     Int32,
     Int64,
+    /// TypeSpec safeint - integer within the IEEE 754 safe range (+/- 2^53 - 1),
+    /// as produced by JavaScript schema libraries
+    Safeint,
     Float32,
     Float64,
     Boolean,
@@ -586,6 +589,7 @@ impl CompiledType {
             "string" => ScalarType::String,
             "int32" => ScalarType::Int32,
             "int64" => ScalarType::Int64,
+            "safeint" => ScalarType::Safeint,
             "float32" => ScalarType::Float32,
             "float64" => ScalarType::Float64,
             "boolean" | "bool" => ScalarType::Boolean,
